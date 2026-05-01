@@ -1,0 +1,367 @@
+// =============================================================
+// Damiao DM-J10010L-2EC -- UART command interface
+// Type commands in the Serial Monitor (115200, "Newline" or "Both NL & CR").
+//
+// Commands:
+//   help                          show this list
+//   e                             enable motor
+//   d                             disable motor
+//   z                             set current position as zero
+//   s                             print status & last feedback
+//   stop                          0 velocity + disable (panic)
+//
+//   mode v                        switch to Velocity mode
+//   mode p                        switch to Position-Velocity mode
+//   mode m                        switch to MIT mode
+//
+//   v <rad/s>                     e.g.  v 5.0
+//   p <rad> <rad/s>               e.g.  p 6.28 10
+//   mit <p> <v> <kp> <kd> <tff>   full MIT (radians, rad/s, ..., Nm)
+//
+//   r <reg>                       read register (decimal addr)
+//   w <reg> <int>                 write uint32 register
+//
+// All speeds/positions refer to the MOTOR shaft.
+// Gear ratio is 10:1 -> output shaft rotates 10x slower.
+// =============================================================
+
+#include <Arduino.h>
+#include <ESP32-TWAI-CAN.hpp>
+#include "driver/twai.h"
+
+#define CAN_TX 5
+#define CAN_RX 4
+
+#define MOTOR_CAN_ID 0x01
+#define MASTER_ID    0x00
+
+// ---- mapping ranges (must match what's set in the debugging assistant!) ----
+// These are the Damiao defaults for J10010L; only matters for MIT mode and feedback decoding.
+const float P_MAX = 12.5f;     // rad
+const float V_MAX = 50.0f;     // rad/s     (motor side)
+const float T_MAX = 20.0f;     // Nm        (output side, after gearbox)
+const float KP_MAX = 500.0f;
+const float KD_MAX = 5.0f;
+
+// ---- state ----
+char cmdMode = 'v';            // 'v' | 'p' | 'm'  (mirrors what we last set)
+bool enabled = false;
+
+// last feedback
+struct {
+  uint8_t  err = 0;
+  float    pos = 0;
+  float    vel = 0;
+  float    tor = 0;
+  uint8_t  t_mos = 0;
+  uint8_t  t_rotor = 0;
+  bool     valid = false;
+} fb;
+
+// =============================================================
+// printing helpers
+// =============================================================
+const char* errStr(uint8_t e) {
+  switch (e) {
+    case 0x0: return "Disabled";
+    case 0x1: return "Enabled";
+    case 0x8: return "Overvoltage";
+    case 0x9: return "Undervoltage";
+    case 0xA: return "Overcurrent";
+    case 0xB: return "MOS Overtemp";
+    case 0xC: return "Coil Overtemp";
+    case 0xD: return "Comm Lost";
+    case 0xE: return "Overload";
+    default:  return "Unknown";
+  }
+}
+
+void printHelp() {
+  Serial.println(F(
+    "\n--- commands ---\n"
+    "  help              show this list\n"
+    "  e / d / z / s     enable / disable / zero / status\n"
+    "  stop              0 velocity + disable (panic)\n"
+    "  mode v|p|m        switch to Velocity / Position-Vel / MIT\n"
+    "  v <rad/s>\n"
+    "  p <rad> <rad/s>\n"
+    "  mit <p> <v> <kp> <kd> <tff>\n"
+    "  r <reg>           read register (decimal)\n"
+    "  w <reg> <int>     write uint32 register\n"));
+}
+
+void printStatus() {
+  twai_status_info_t s;
+  if (twai_get_status_info(&s) == ESP_OK) {
+    const char *st = "?";
+    switch (s.state) {
+      case TWAI_STATE_STOPPED:    st = "STOPPED"; break;
+      case TWAI_STATE_RUNNING:    st = "RUNNING"; break;
+      case TWAI_STATE_BUS_OFF:    st = "BUS_OFF"; break;
+      case TWAI_STATE_RECOVERING: st = "RECOVERING"; break;
+    }
+    Serial.printf("[bus] %s tx_err=%lu rx_err=%lu  [mode] %c  [enabled] %d\n",
+                  st, (unsigned long)s.tx_error_counter,
+                  (unsigned long)s.rx_error_counter, cmdMode, enabled);
+  }
+  if (fb.valid) {
+    Serial.printf("[fb]  err=0x%X(%s) pos=%+.3f rad vel=%+.3f rad/s tor=%+.3f Nm Tmos=%uC Trotor=%uC\n",
+                  fb.err, errStr(fb.err), fb.pos, fb.vel, fb.tor, fb.t_mos, fb.t_rotor);
+  } else {
+    Serial.println("[fb]  none yet");
+  }
+}
+
+// =============================================================
+// CAN frame helpers
+// =============================================================
+void sendSpecial(uint8_t code) {
+  CanFrame f = {0};
+  f.identifier = MOTOR_CAN_ID;
+  f.data_length_code = 8;
+  for (int i = 0; i < 7; i++) f.data[i] = 0xFF;
+  f.data[7] = code;
+  ESP32Can.writeFrame(f);
+}
+
+void readRegister(uint8_t rid) {
+  CanFrame f = {0};
+  f.identifier = 0x7FF;
+  f.data_length_code = 8;
+  f.data[0] = MOTOR_CAN_ID & 0xFF;
+  f.data[1] = (MOTOR_CAN_ID >> 8) & 0xFF;
+  f.data[2] = 0x33;
+  f.data[3] = rid;
+  ESP32Can.writeFrame(f);
+}
+
+void writeRegisterU32(uint8_t rid, uint32_t val) {
+  CanFrame f = {0};
+  f.identifier = 0x7FF;
+  f.data_length_code = 8;
+  f.data[0] = MOTOR_CAN_ID & 0xFF;
+  f.data[1] = (MOTOR_CAN_ID >> 8) & 0xFF;
+  f.data[2] = 0x55;
+  f.data[3] = rid;
+  f.data[4] = val        & 0xFF;
+  f.data[5] = (val >> 8)  & 0xFF;
+  f.data[6] = (val >> 16) & 0xFF;
+  f.data[7] = (val >> 24) & 0xFF;
+  ESP32Can.writeFrame(f);
+}
+
+// Velocity mode -- 0x200 + ID, 4 bytes float v_des
+void sendVelocity(float v) {
+  CanFrame f = {0};
+  f.identifier = 0x200 + MOTOR_CAN_ID;
+  f.data_length_code = 4;
+  memcpy(f.data, &v, 4);
+  ESP32Can.writeFrame(f);
+}
+
+// Position-Velocity -- 0x100 + ID, 4 bytes float p + 4 bytes float v
+void sendPositionVel(float p, float v) {
+  CanFrame f = {0};
+  f.identifier = 0x100 + MOTOR_CAN_ID;
+  f.data_length_code = 8;
+  memcpy(&f.data[0], &p, 4);
+  memcpy(&f.data[4], &v, 4);
+  ESP32Can.writeFrame(f);
+}
+
+// MIT mode -- ID, packed 8 bytes
+static uint16_t floatToUint(float x, float xmin, float xmax, int bits) {
+  if (x < xmin) x = xmin;
+  if (x > xmax) x = xmax;
+  float span = xmax - xmin;
+  return (uint16_t)((x - xmin) * (float)((1 << bits) - 1) / span);
+}
+void sendMIT(float p, float v, float kp, float kd, float tff) {
+  uint16_t p_int  = floatToUint(p,   -P_MAX, P_MAX, 16);
+  uint16_t v_int  = floatToUint(v,   -V_MAX, V_MAX, 12);
+  uint16_t kp_int = floatToUint(kp,    0,   KP_MAX, 12);
+  uint16_t kd_int = floatToUint(kd,    0,   KD_MAX, 12);
+  uint16_t t_int  = floatToUint(tff, -T_MAX, T_MAX, 12);
+
+  CanFrame f = {0};
+  f.identifier = MOTOR_CAN_ID;
+  f.data_length_code = 8;
+  f.data[0] =  p_int >> 8;
+  f.data[1] =  p_int & 0xFF;
+  f.data[2] =  v_int >> 4;
+  f.data[3] = ((v_int & 0xF) << 4) | (kp_int >> 8);
+  f.data[4] =  kp_int & 0xFF;
+  f.data[5] =  kd_int >> 4;
+  f.data[6] = ((kd_int & 0xF) << 4) | (t_int >> 8);
+  f.data[7] =  t_int & 0xFF;
+  ESP32Can.writeFrame(f);
+}
+
+// =============================================================
+// Feedback decoding (master-ID frame at 0x000 by default)
+// =============================================================
+static float uintToFloat(uint16_t x_int, float xmin, float xmax, int bits) {
+  float span = xmax - xmin;
+  return (float)x_int * span / (float)((1 << bits) - 1) + xmin;
+}
+
+void decodeFeedback(const CanFrame &f) {
+  if (f.data_length_code < 8) return;
+  fb.err = (f.data[0] >> 4) & 0xF;
+  uint16_t p_int = ((uint16_t)f.data[1] << 8) | f.data[2];
+  uint16_t v_int = ((uint16_t)f.data[3] << 4) | (f.data[4] >> 4);
+  uint16_t t_int = ((uint16_t)(f.data[4] & 0xF) << 8) | f.data[5];
+  fb.pos     = uintToFloat(p_int, -P_MAX, P_MAX, 16);
+  fb.vel     = uintToFloat(v_int, -V_MAX, V_MAX, 12);
+  fb.tor     = uintToFloat(t_int, -T_MAX, T_MAX, 12);
+  fb.t_mos   = f.data[6];
+  fb.t_rotor = f.data[7];
+  fb.valid   = true;
+  enabled    = (fb.err == 0x1);
+}
+
+// =============================================================
+// command parsing
+// =============================================================
+String inbuf;
+
+void handleCommand(String line) {
+  line.trim();
+  if (line.length() == 0) return;
+
+  // single-letter shortcuts
+  if (line == "help" || line == "h" || line == "?") { printHelp(); return; }
+  if (line == "e") { sendSpecial(0xFC); Serial.println(">> ENABLE");  return; }
+  if (line == "d") { sendSpecial(0xFD); Serial.println(">> DISABLE"); return; }
+  if (line == "z") { sendSpecial(0xFE); Serial.println(">> ZERO");    return; }
+  if (line == "s") { printStatus(); return; }
+  if (line == "stop") {
+    sendVelocity(0.0f); delay(20);
+    sendSpecial(0xFD);
+    Serial.println(">> STOP");
+    return;
+  }
+
+  // tokenize
+  char buf[80]; line.toCharArray(buf, sizeof(buf));
+  char *tok = strtok(buf, " ");
+  if (!tok) return;
+
+  if (strcmp(tok, "mode") == 0) {
+    char *m = strtok(NULL, " ");
+    if (!m) { Serial.println("?? mode v|p|m"); return; }
+    uint32_t code = 0;
+    if      (m[0]=='m') { code = 1; cmdMode = 'm'; }
+    else if (m[0]=='p') { code = 2; cmdMode = 'p'; }
+    else if (m[0]=='v') { code = 3; cmdMode = 'v'; }
+    else { Serial.println("?? mode v|p|m"); return; }
+    writeRegisterU32(10, code);
+    Serial.printf(">> mode -> %c (CTRL_MODE=%lu)\n", cmdMode, (unsigned long)code);
+    return;
+  }
+
+  if (strcmp(tok, "v") == 0) {
+    char *a = strtok(NULL, " ");
+    if (!a) { Serial.println("?? v <rad/s>"); return; }
+    float vv = atof(a);
+    sendVelocity(vv);
+    Serial.printf(">> v=%+.3f rad/s\n", vv);
+    return;
+  }
+
+  if (strcmp(tok, "p") == 0) {
+    char *a = strtok(NULL, " ");
+    char *b = strtok(NULL, " ");
+    if (!a || !b) { Serial.println("?? p <rad> <rad/s>"); return; }
+    float pp = atof(a), vv = atof(b);
+    sendPositionVel(pp, vv);
+    Serial.printf(">> p=%+.3f rad, v_max=%.3f rad/s\n", pp, vv);
+    return;
+  }
+
+  if (strcmp(tok, "mit") == 0) {
+    char *a = strtok(NULL, " ");
+    char *b = strtok(NULL, " ");
+    char *c = strtok(NULL, " ");
+    char *d = strtok(NULL, " ");
+    char *e = strtok(NULL, " ");
+    if (!a||!b||!c||!d||!e) { Serial.println("?? mit <p> <v> <kp> <kd> <tff>"); return; }
+    sendMIT(atof(a), atof(b), atof(c), atof(d), atof(e));
+    Serial.printf(">> mit p=%s v=%s kp=%s kd=%s tff=%s\n", a, b, c, d, e);
+    return;
+  }
+
+  if (strcmp(tok, "r") == 0) {
+    char *a = strtok(NULL, " ");
+    if (!a) { Serial.println("?? r <reg>"); return; }
+    uint8_t rid = (uint8_t)atoi(a);
+    readRegister(rid);
+    Serial.printf(">> read reg %u\n", rid);
+    return;
+  }
+
+  if (strcmp(tok, "w") == 0) {
+    char *a = strtok(NULL, " ");
+    char *b = strtok(NULL, " ");
+    if (!a || !b) { Serial.println("?? w <reg> <int>"); return; }
+    uint8_t rid = (uint8_t)atoi(a);
+    uint32_t val = (uint32_t)strtoul(b, NULL, 0);  // accepts 0x.. or decimal
+    writeRegisterU32(rid, val);
+    Serial.printf(">> write reg %u = %lu\n", rid, (unsigned long)val);
+    return;
+  }
+
+  Serial.printf("?? unknown command '%s' (type 'help')\n", tok);
+}
+
+// =============================================================
+// setup / loop
+// =============================================================
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  Serial.println("\n=== Damiao UART control ===");
+
+  ESP32Can.setPins(CAN_TX, CAN_RX);
+  ESP32Can.setRxQueueSize(20);
+  ESP32Can.setTxQueueSize(20);
+  ESP32Can.setSpeed(ESP32Can.convertSpeed(1000));
+
+  if (!ESP32Can.begin()) {
+    Serial.println("CAN FAILED");
+    while (1) delay(1000);
+  }
+  Serial.println("CAN @ 1 Mbps");
+  printHelp();
+  Serial.print("> ");
+}
+
+void loop() {
+  // 1) drain CAN RX -- decode feedback if it's from the master ID
+  CanFrame rx;
+  while (ESP32Can.readFrame(rx, 0)) {
+    if (rx.identifier == MASTER_ID && rx.data_length_code >= 8) {
+      decodeFeedback(rx);
+    } else {
+      // unknown frame -- print raw for visibility
+      Serial.printf("[RX] ID=0x%03X data=", rx.identifier);
+      for (int i = 0; i < rx.data_length_code; i++) Serial.printf("%02X ", rx.data[i]);
+      Serial.println();
+    }
+  }
+
+  // 2) read serial line-by-line
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      Serial.print(inbuf); Serial.println();   // echo
+      handleCommand(inbuf);
+      inbuf = "";
+      Serial.print("> ");
+    } else {
+      inbuf += c;
+      if (inbuf.length() > 78) inbuf = "";  // overflow guard
+    }
+  }
+}
