@@ -6,7 +6,7 @@
 // CAN IDs
 // ---------------------------------------------------------------------------
 static constexpr uint32_t CMD_ID         = 0x200;  // PC -> ESP32
-static constexpr uint32_t RESP_ID        = 0x201;  // ESP32 -> PC (lid)
+static constexpr uint32_t LID_RESP_ID        = 0x201;  // ESP32 -> PC (lid)
 static constexpr uint32_t WEIGHT_RESP_ID = 0x202;  // ESP32 -> PC (weight)
 
 // ---------------------------------------------------------------------------
@@ -14,11 +14,12 @@ static constexpr uint32_t WEIGHT_RESP_ID = 0x202;  // ESP32 -> PC (weight)
 // ---------------------------------------------------------------------------
 static constexpr uint8_t CMD_OPEN        = 0x01;
 static constexpr uint8_t CMD_CLOSE       = 0x02;
+static constexpr uint8_t CMD_STOP        = 0x08;
 static constexpr uint8_t CMD_POLL_STATUS = 0x04;
 static constexpr uint8_t CMD_GET_WEIGHT  = 0x10;
 
 // ---------------------------------------------------------------------------
-// Status codes (ESP32 -> PC, byte 1 у RESP_ID)
+// Status codes (ESP32 -> PC, byte 1 у LID_RESP_ID)
 // ---------------------------------------------------------------------------
 static constexpr uint8_t STATUS_ACK         = 0x00;
 static constexpr uint8_t STATUS_IN_PROGRESS = 0x01;
@@ -89,20 +90,20 @@ static void lid_update() {
 // ---------------------------------------------------------------------------
 static void send_lid_response(uint8_t cmd, uint8_t status) {
     const uint8_t payload[2] = {cmd, status};
-    const bool sent = can_send(RESP_ID, payload, 2);
-    Serial.print("TX  id=0x"); Serial.print(RESP_ID, HEX);
+    const esp_err_t sent = can_send(LID_RESP_ID, payload, 2);
+    Serial.print("TX  id=0x"); Serial.print(LID_RESP_ID, HEX);
     Serial.print("  cmd=0x"); Serial.print(cmd, HEX);
     Serial.print("  status=0x"); Serial.print(status, HEX);
-    Serial.print("  can_send="); Serial.println(sent ? "OK" : "FAIL");
+    Serial.print("  can_send="); Serial.println(sent == ESP_OK ? "OK" : "FAIL");
 }
 
 static void send_weight(float value) {
     uint8_t payload[4];
     memcpy(payload, &value, 4);  // float32 little-endian
-    const bool sent = can_send(WEIGHT_RESP_ID, payload, 4);
+    const esp_err_t sent = can_send(WEIGHT_RESP_ID, payload, 4);
     Serial.print("TX  id=0x"); Serial.print(WEIGHT_RESP_ID, HEX);
     Serial.print("  weight="); Serial.print(value, 3);
-    Serial.print("  can_send="); Serial.println(sent ? "OK" : "FAIL");
+    Serial.print("  can_send="); Serial.println(sent == ESP_OK ? "OK" : "FAIL");
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +119,12 @@ static void hw_start_close() {
     // TODO: start motor to close lid
     Serial.println("[HW] start close");
     led_set(CRGB::Yellow);
+}
+
+static void hw_stop() {
+    // TODO: stop motors immediately
+    Serial.println("[HW] stop");
+    led_set(CRGB::Blue);
 }
 
 static float hw_read_weight() {
@@ -161,6 +168,20 @@ static void handle_close() {
     send_lid_response(CMD_CLOSE, STATUS_ACK);
 }
 
+static void handle_stop() {
+    Serial.println("CMD: STOP LID");
+
+    if (lid_state != LidState::OPENING && lid_state != LidState::CLOSING) {
+        send_lid_response(CMD_STOP, STATUS_DONE);  // already stopped
+        return;
+    }
+
+    hw_stop();
+    lid_state = LidState::ERROR;
+    led_set(CRGB::Blue);
+    send_lid_response(CMD_STOP, STATUS_DONE);
+}
+
 static void handle_poll_status() {
     const uint8_t status = lid_current_status();
     send_lid_response(last_cmd, status);
@@ -196,6 +217,7 @@ static void handle_command(const CanMsg &msg) {
     switch (msg.data[0]) {
         case CMD_OPEN:        handle_open();        break;
         case CMD_CLOSE:       handle_close();       break;
+        case CMD_STOP:        handle_stop();        break;
         case CMD_POLL_STATUS: handle_poll_status(); break;
         case CMD_GET_WEIGHT:  handle_get_weight();  break;
         default:
