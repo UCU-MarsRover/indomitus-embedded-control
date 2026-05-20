@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <FastLED.h>
 #include "can_comm.hpp"
 
 // CAN IDs
@@ -14,36 +15,41 @@ static constexpr uint8_t CMD_WORK_DONE = 0x03;
 static constexpr uint8_t STATUS_OK   = 0x00;
 static constexpr uint8_t STATUS_FAIL = 0x01;
 
-// Вбудований світлодіод ESP32-S3
-static constexpr uint8_t BUILTIN_LED_PIN = 48; // GPIO48 на більшості плат ESP32-S3
+// RGB LED (WS2812)
+static constexpr uint8_t LED_PIN  = 48;
+static constexpr uint8_t NUM_LEDS = 1;
+CRGB leds[NUM_LEDS];
+
+static void led_set(CRGB color) {
+    leds[0] = color;
+    FastLED.show();
+}
 
 // ---------------------------------------------------------------------------
-// Hardware stubs — replace with real GPIO / actuator logic
+// Hardware stubs
 // ---------------------------------------------------------------------------
 static bool do_open_lid() {
     Serial.println("[ACT] Opening lid...");
-    pinMode(BUILTIN_LED_PIN, OUTPUT);
-    digitalWrite(BUILTIN_LED_PIN, HIGH); // Увімкнути LED
-    Serial.println("[LED] ON");
+    led_set(CRGB::Green);
+    Serial.println("[LED] GREEN");
     delay(500);
     return true;
 }
 
 static bool do_close_lid() {
     Serial.println("[ACT] Closing lid...");
-    digitalWrite(BUILTIN_LED_PIN, LOW); // Вимкнути LED
-    Serial.println("[LED] OFF");
+    led_set(CRGB::Red);
+    Serial.println("[LED] RED");
     delay(500);
     return true;
 }
 
 static bool do_work_done_ack() {
     Serial.println("[ACT] Work-done ack received");
-    // Моргнути 3 рази на підтвердження
     for (int i = 0; i < 3; i++) {
-        digitalWrite(BUILTIN_LED_PIN, HIGH);
+        led_set(CRGB::Blue);
         delay(150);
-        digitalWrite(BUILTIN_LED_PIN, LOW);
+        led_set(CRGB::Black);
         delay(150);
     }
     return true;
@@ -67,22 +73,19 @@ static void send_response(uint8_t cmd, bool ok) {
 // Handle one incoming CAN frame
 // ---------------------------------------------------------------------------
 static void handle_command(const CanMsg &msg) {
-    // === DEBUG: логуємо БУДЬ-ЯКИЙ фрейм ===
     Serial.print("[CAN RX] id=0x");
     Serial.print(msg.id, HEX);
     Serial.print("  len=");
     Serial.print(msg.len);
     Serial.print("  data=[ ");
     for (uint8_t i = 0; i < msg.len; i++) {
-        if (msg.data[i] < 0x10) Serial.print("0"); // leading zero
+        if (msg.data[i] < 0x10) Serial.print("0");
         Serial.print(msg.data[i], HEX);
         Serial.print(" ");
     }
     Serial.println("]");
-    // === кінець DEBUG ===
-    if (msg.id != CMD_ID || msg.len < 1) {
-        return;
-    }
+
+    if (msg.id != CMD_ID || msg.len < 1) return;
 
     const uint8_t cmd = msg.data[0];
     bool ok = false;
@@ -103,6 +106,7 @@ static void handle_command(const CanMsg &msg) {
         default:
             Serial.print("CMD: unknown 0x");
             Serial.println(cmd, HEX);
+            led_set(CRGB::Orange);
             ok = false;
             break;
     }
@@ -115,27 +119,27 @@ static void handle_command(const CanMsg &msg) {
 // ---------------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    while (!Serial);
+    delay(1000); // замість while (!Serial) — не блокує без монітора
+
+    FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
+    FastLED.setBrightness(50);
+    led_set(CRGB::Black);
 
     Serial.println("ESP32-S3 container node boot");
-
-    // Ініціалізація LED
-    pinMode(BUILTIN_LED_PIN, OUTPUT);
-    digitalWrite(BUILTIN_LED_PIN, LOW);
-    Serial.println("LED pin initialized");
+    Serial.println("LED initialized");
 
     can_init_1mbs_accept_all();
     Serial.println("CAN started at 1 Mbps");
+
+    // Startup blink — білий колір означає готовність
+    led_set(CRGB::White);
+    delay(300);
+    led_set(CRGB::Black);
 }
 
 void loop() {
-    Serial.println("loop tick");
     CanMsg msg;
-    // if (can_recv(msg, 100)) {
-    //     handle_command(msg);
-    // }
-    digitalWrite(BUILTIN_LED_PIN, HIGH);
-    delay(150);
-    digitalWrite(BUILTIN_LED_PIN, LOW);
-    delay(150);
+    if (can_recv(msg, 100)) {
+        handle_command(msg);
+    }
 }
