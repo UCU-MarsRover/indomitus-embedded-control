@@ -4,6 +4,8 @@
 #include "lid_manager.hpp"
 #include "weight_sensor.hpp"
 #include "shared_state.hpp"
+#include "pins.hpp"
+
 
 #ifdef DEBUG_ENABLED
 #include <FastLED.h>
@@ -11,8 +13,8 @@
 static constexpr uint8_t LED_PIN  = 48;
 static constexpr uint8_t NUM_LEDS = 1;
 CRGB leds[NUM_LEDS];
-
 #endif // DEBUG_ENABLED
+
 
 void setup() {
 #ifdef DEBUG_ENABLED
@@ -28,11 +30,11 @@ void setup() {
 #endif // DEBUG_ENABLED
 
     can_init_1mbs_accept_all();
-    weight_sensor_init();
+    weight_sensors_init();
 
     xTaskCreatePinnedToCore(can_task,           "can",    4096, nullptr,   3, nullptr, 1);
     xTaskCreatePinnedToCore(lid_task,           "lid",    2048, nullptr,   2, nullptr, 0);
-    xTaskCreatePinnedToCore(weight_sensor_task, "sensor", 2048, &g_state,  2, nullptr, 0);
+    xTaskCreatePinnedToCore(weight_sensors_task,"sensor", 2048, &g_state,  2, nullptr, 0);
 
 #ifdef DEBUG_ENABLED
     leds[0] = CRGB::White; FastLED.show();
@@ -42,6 +44,7 @@ void setup() {
     Serial.println("Ready");
 #endif // DEBUG_ENABLED
 }
+
 
 void loop() {
     vTaskDelay(portMAX_DELAY);
