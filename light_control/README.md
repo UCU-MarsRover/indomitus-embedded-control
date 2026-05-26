@@ -15,6 +15,8 @@ Jetson -> ESP32:
 - ID `0x300`
 - `0x01` spotlight ON
 - `0x02` spotlight OFF
+- `0x04` beautiful light ON
+- `0x05` beautiful light OFF
 - `0x03` traffic light bitmask in `byte 1`
 
 ESP32 -> Jetson:

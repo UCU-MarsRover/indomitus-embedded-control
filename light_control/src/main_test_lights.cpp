@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#define DEBUG_PORT Serial0
+
 
 namespace Pins {
     constexpr uint8_t kSpotlight = 40;
@@ -10,7 +12,7 @@ namespace Pins {
 }
 
 static void logStep(const char* label) {
-    Serial.println(label);
+    DEBUG_PORT.println(label);
 }
 
 static void setTraffic(bool red, bool yellow, bool green, bool blue) {
@@ -26,7 +28,7 @@ static void allOff() {
 }
 
 void setup() {
-    Serial.begin(115200);
+    DEBUG_PORT.begin(115200);
     delay(300);
 
     pinMode(Pins::kSpotlight, OUTPUT);

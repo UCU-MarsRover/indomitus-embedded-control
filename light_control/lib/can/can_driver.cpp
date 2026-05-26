@@ -1,14 +1,36 @@
 #include "can_driver.hpp"
 #include "pins.hpp"
 
-void can_init_1mbs_accept_all() {
-    twai_general_config_t general_config =
-        TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)Pins::CAN_TX, (gpio_num_t)Pins::CAN_RX, TWAI_MODE_NORMAL);
-    twai_timing_config_t timing_config = TWAI_TIMING_CONFIG_1MBITS();
-    twai_filter_config_t filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+esp_err_t can_init_1mbs_accept_all() {
+    twai_general_config_t general_config = {};
+    general_config.mode = TWAI_MODE_NORMAL;
+    general_config.tx_io = static_cast<gpio_num_t>(Pins::CAN_TX);
+    general_config.rx_io = static_cast<gpio_num_t>(Pins::CAN_RX);
+    general_config.clkout_io = GPIO_NUM_NC;
+    general_config.bus_off_io = GPIO_NUM_NC;
+    general_config.tx_queue_len = 10;
+    general_config.rx_queue_len = 20;
+    general_config.alerts_enabled =
+        TWAI_ALERT_RX_DATA |
+        TWAI_ALERT_TX_IDLE |
+        TWAI_ALERT_TX_SUCCESS |
+        TWAI_ALERT_TX_FAILED |
+        TWAI_ALERT_RX_QUEUE_FULL |
+        TWAI_ALERT_BUS_ERROR |
+        TWAI_ALERT_ERR_PASS |
+        TWAI_ALERT_BUS_OFF;
+    general_config.clkout_divider = 0;
+    general_config.intr_flags = ESP_INTR_FLAG_LEVEL1;
 
-    twai_driver_install(&general_config, &timing_config, &filter_config);
-    twai_start();
+    const twai_timing_config_t timing_config = TWAI_TIMING_CONFIG_1MBITS();
+    const twai_filter_config_t filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+    esp_err_t err = twai_driver_install(&general_config, &timing_config, &filter_config);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return twai_start();
 }
 
 esp_err_t can_send(uint32_t id, const uint8_t* data, uint8_t len) {
