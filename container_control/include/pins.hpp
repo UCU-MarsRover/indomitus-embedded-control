@@ -1,6 +1,8 @@
 #pragma once
 #include "driver/gpio.h"
 
+// SERVO
+static constexpr uint8_t PIN_SERVO = 10;
 
 // CAN (TWAI)
 static constexpr gpio_num_t PIN_CAN_TX = GPIO_NUM_37;

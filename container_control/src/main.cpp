@@ -29,6 +29,7 @@ void setup() {
     Serial.println("ESP32-S3 boot");
 #endif // DEBUG_ENABLED
 
+    lid_init();
     can_init_1mbs_accept_all();
     weight_sensors_init();
 
