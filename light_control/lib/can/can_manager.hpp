@@ -2,6 +2,8 @@
 
 #include "can_driver.hpp"
 
+extern uint32_t last_command;
+
 namespace CanProtocol {
     constexpr uint32_t CMD_ID      = 0x300;
     constexpr uint32_t RESP_ID     = 0x301;

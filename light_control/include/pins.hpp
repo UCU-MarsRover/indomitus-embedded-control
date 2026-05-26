@@ -1,10 +1,11 @@
 #pragma once
 
 #include <stdint.h>
+#include "driver/gpio.h"
 
 namespace Pins {
-    constexpr uint8_t CAN_TX = 4;
-    constexpr uint8_t CAN_RX = 5;
+    constexpr gpio_num_t CAN_TX = GPIO_NUM_4;
+    constexpr gpio_num_t CAN_RX = GPIO_NUM_5;
 
     constexpr uint8_t SPOTLIGHT = 40;
     constexpr uint8_t BEAUTIFUL = 39;

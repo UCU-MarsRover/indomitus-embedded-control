@@ -47,28 +47,7 @@ void loop() {
    
     delay(2000);
 
-    // logStep("light_test: spotlight OFF, red ON");
-    // digitalWrite(Pins::kSpotlight, LOW);
-    // setTraffic(true, false, false, false);
-    // delay(2000);
-
     logStep("light_test: yellow ON");
     setTraffic(true, true, true, true);
     delay(4000);
-
-    // logStep("light_test: green ON");
-    // setTraffic(false, false, true, false);
-    // delay(2000);
-
-    // logStep("light_test: blue ON");
-    // setTraffic(false, false, false, true);
-    // delay(2000);
-
-    // logStep("light_test: all traffic lights ON");
-    // setTraffic(true, true, true, true);
-    // delay(2000);
-
-    // logStep("light_test: all outputs OFF");
-    // allOff();
-    // delay(2000);
 }
