@@ -63,7 +63,6 @@ void loop() {
 #include "shared_state.hpp"
 #include "pins.hpp"
 
-
 // #ifdef DEBUG_ENABLED
 // #include <FastLED.h>
 

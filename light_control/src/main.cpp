@@ -4,9 +4,11 @@
 #include "light_manager.hpp"
 
 void setup() {
+#if DEBUG_ENABLED
     Serial.begin(115200);
 
     while (!Serial) { delay(10); }
+#endif
 
     light_init();
     can_init_1mbs_accept_all();

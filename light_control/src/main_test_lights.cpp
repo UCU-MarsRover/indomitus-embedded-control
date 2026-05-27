@@ -1,6 +1,8 @@
 #include <Arduino.h>
 
+#ifdef DEBUG_ENABLED
 #define DEBUG_PORT Serial0
+#endif
 
 
 namespace Pins {
@@ -12,7 +14,9 @@ namespace Pins {
 }
 
 static void logStep(const char* label) {
+#if DEBUG_ENABLED
     DEBUG_PORT.println(label);
+#endif
 }
 
 static void setTraffic(bool red, bool yellow, bool green, bool blue) {
@@ -28,8 +32,10 @@ static void allOff() {
 }
 
 void setup() {
+#if DEBUG_ENABLED
     DEBUG_PORT.begin(115200);
     delay(300);
+#endif
 
     pinMode(Pins::kSpotlight, OUTPUT);
     pinMode(Pins::kRed, OUTPUT);

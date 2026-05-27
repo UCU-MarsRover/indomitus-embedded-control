@@ -23,13 +23,17 @@ static void send_light_response(uint8_t cmd, uint8_t status) {
 
 static void handle_command(const CanMsg& msg) {
     if (msg.id != CMD_ID || msg.len < 1) {
+#if DEBUG_ENABLED
         Serial.print("[CAN] Ignored msg id=0x"); Serial.print(msg.id, HEX);
         Serial.print(" len="); Serial.println(msg.len);
+#endif
         return;
     }
 
+#if DEBUG_ENABLED
     Serial.print("[CAN RX] id=0x"); Serial.print(msg.id, HEX);
     Serial.print(" data[0]=0x");    Serial.println(msg.data[0], HEX);
+#endif
 
     switch (msg.data[0]) {
         case CMD_SPOTLIGHT_ON:
@@ -81,10 +85,12 @@ void can_task(void*) {
             handle_command(msg);
         }
 
+#if DEBUG_ENABLED
         Serial.print("[CAN] last_command=");
         Serial.print(last_command);
         Serial.print(" (");
         Serial.print(last_command);
         Serial.println(")");
+#endif
     }
 }
