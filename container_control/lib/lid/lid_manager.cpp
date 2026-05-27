@@ -1,6 +1,6 @@
 #include "lid_manager.hpp"
 #include "can_manager.hpp"
-#include <ESP32Servo.h>
+#include "servo_ledc.hpp"
 
 using namespace CanProtocol;
 
@@ -9,51 +9,74 @@ using namespace CanProtocol;
 // LED
 // ---------------------------------------------------------------------------
 #ifdef DEBUG_ENABLED
-#include <FastLED.h>
+// #include <FastLED.h>
 
-extern CRGB leds[];
+// extern CRGB leds[];
 
-static void led_set(CRGB color) {
-    leds[0] = color;
-    FastLED.show();
-}
+// static void led_set(CRGB color) {
+//     leds[0] = color;
+//     FastLED.show();
+// }
 #endif // DEBUG_ENABLED
 
 // ---------------------------------------------------------------------------
 // Hardware stubs
 // ---------------------------------------------------------------------------
 
-static Servo lid_servo;
+static ServoLedc lid_servo_right_far;
+static ServoLedc lid_servo_right_near;
+static ServoLedc lid_servo_left_far;
+static ServoLedc lid_servo_left_near;
 
-static constexpr int SERVO_OPEN_DEG  = 90;
-static constexpr int SERVO_CLOSE_DEG = 0;
+// Continuous rotation servos: 1500µs = stop, >1500 = forward, <1500 = backward
+static constexpr int SERVO_SPEED_CW  = 1400;  // clockwise (forward)
+static constexpr int SERVO_SPEED_CCW = 1600;  // counter-clockwise (backward)
+
+static constexpr uint32_t LID_ACTION_MS = 1200; // time for 270° rotation
 
 void lid_init() {
-    lid_servo.attach(PIN_SERVO);
-    lid_servo.write(SERVO_CLOSE_DEG);
+    lid_servo_right_far.attach(PIN_SERVO_RIGHT_FAR, LEDC_CHANNEL_0);
+    lid_servo_right_near.attach(PIN_SERVO_RIGHT_NEAR, LEDC_CHANNEL_1);
+    lid_servo_left_far.attach(PIN_SERVO_LEFT_FAR, LEDC_CHANNEL_2);
+    lid_servo_left_near.attach(PIN_SERVO_LEFT_NEAR, LEDC_CHANNEL_3);
+
+    // Initialize to neutral (stopped)
+    lid_servo_right_far.stop();
+    lid_servo_right_near.stop();
+    lid_servo_left_far.stop();
+    lid_servo_left_near.stop();
 }
 
 static void hw_start_open() {
-    lid_servo.write(SERVO_OPEN_DEG);
+    lid_servo_right_far.writeMicroseconds(SERVO_SPEED_CW);
+    lid_servo_right_near.writeMicroseconds(SERVO_SPEED_CW);
+    lid_servo_left_far.writeMicroseconds(SERVO_SPEED_CCW);
+    lid_servo_left_near.writeMicroseconds(SERVO_SPEED_CCW);
 #ifdef DEBUG_ENABLED
     Serial.println("[HW] start open");
-    led_set(CRGB::Yellow);
+    // led_set(CRGB::Yellow);
 #endif
 }
 
 static void hw_start_close() {
-    lid_servo.write(SERVO_CLOSE_DEG);
+    lid_servo_right_far.writeMicroseconds(SERVO_SPEED_CCW);
+    lid_servo_right_near.writeMicroseconds(SERVO_SPEED_CCW);
+    lid_servo_left_far.writeMicroseconds(SERVO_SPEED_CW);
+    lid_servo_left_near.writeMicroseconds(SERVO_SPEED_CW);
 #ifdef DEBUG_ENABLED
     Serial.println("[HW] start close");
-    led_set(CRGB::Yellow);
+    // led_set(CRGB::Yellow);
 #endif
 }
 
 static void hw_stop() {
-    lid_servo.detach();
+    lid_servo_right_far.writeMicroseconds(1500);
+    lid_servo_right_near.writeMicroseconds(1500);
+    lid_servo_left_far.writeMicroseconds(1500);
+    lid_servo_left_near.writeMicroseconds(1500);
 #ifdef DEBUG_ENABLED
     Serial.println("[HW] stop");
-    led_set(CRGB::Blue);
+    // led_set(CRGB::Blue);
 #endif
 }
 
@@ -68,7 +91,6 @@ enum class LidState : uint8_t {
 static LidState  lid_state    = LidState::IDLE;
 static uint8_t   last_cmd     = 0x00;
 static uint32_t  action_start = 0;
-static constexpr uint32_t LID_ACTION_MS = 5000;
 
 static uint8_t lid_current_status() {
     switch (lid_state) {
@@ -87,13 +109,13 @@ static void lid_update() {
         if (lid_state == LidState::OPENING) {
             lid_state = LidState::DONE_OPEN;
 #ifdef DEBUG_ENABLED
-            led_set(CRGB::Green);
+            // led_set(CRGB::Green);
             Serial.println("[LID] Opened");
 #endif // DEBUG_ENABLED
         } else {
             lid_state = LidState::DONE_CLOSED;
 #ifdef DEBUG_ENABLED
-            led_set(CRGB::Red);
+            // led_set(CRGB::Red);
             Serial.println("[LID] Closed");
 #endif // DEBUG_ENABLED
         }
