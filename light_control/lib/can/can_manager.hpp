@@ -1,6 +1,7 @@
 #pragma once
 
 #include "can_driver.hpp"
+#include "freertos/queue.h"
 
 extern uint32_t last_command;
 
@@ -18,4 +19,14 @@ namespace CanProtocol {
     constexpr uint8_t STATUS_ERROR = 0x01;
 }
 
-void can_task(void*);
+struct CanTxMsg {
+    uint32_t id;
+    uint8_t data[8];
+    uint8_t len;
+};
+
+void can_rx_task(void*);
+
+extern QueueHandle_t can_tx_queue;
+void can_tx_enqueue(uint32_t id, const uint8_t* data, uint8_t len);
+void can_tx_task(void*);
