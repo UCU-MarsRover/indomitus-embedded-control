@@ -6,6 +6,7 @@
 
 static const char *TAG = "CAN_LOG";
 extern QueueHandle_t light_queue;
+QueueHandle_t can_tx_queue = nullptr;
 
 namespace Can = CanProtocol;
 

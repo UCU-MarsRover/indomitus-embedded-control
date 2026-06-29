@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 #include "driver/gpio.h"
-#include "esp_adc/adc_oneshot.h"
+#include "driver/adc.h"
 
 namespace Pins {
     constexpr gpio_num_t CAN_TX = GPIO_NUM_7;
@@ -15,6 +15,6 @@ namespace Pins {
     constexpr uint8_t GREEN = 42;
     constexpr uint8_t BLUE = 41;
 
-    constexr adc_channel_t current_adc_channel = ADC_CHANNEL_9; // GPIO10
-    constexr adc_channel_t current_adc_channel = ADC_CHANNEL_10; // GPIO11
+    constexpr adc_channel_t CURRENT_ADC_CHANNEL_1 = ADC_CHANNEL_9; // GPIO10
+    constexpr adc_channel_t CURRENT_ADC_CHANNEL_2 = ADC_CHANNEL_5; // GPIO6
 }

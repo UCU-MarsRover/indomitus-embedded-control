@@ -15,7 +15,11 @@ void can_init_1mbs_accept_all() {
     g.intr_flags = ESP_INTR_FLAG_LEVEL1;
 
     const twai_timing_config_t t = TWAI_TIMING_CONFIG_1MBITS();
-    const twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+    const twai_filter_config_t f = {
+        .acceptance_code = 0x300 << 21,
+        .acceptance_mask = ~(0x7F0 << 21),
+        .single_filter = true,
+    };
 
     ESP_ERROR_CHECK(twai_driver_install(&g, &t, &f));
     ESP_ERROR_CHECK(twai_start());
