@@ -28,8 +28,8 @@ static CurrentSensor sensor1 = { (adc1_channel_t)Pins::CURRENT_ADC_CHANNEL_1, {}
 static CurrentSensor sensor2 = { (adc1_channel_t)Pins::CURRENT_ADC_CHANNEL_2, {}, {}, 0, false };
 
 static void sensor_init(CurrentSensor& s) {
-    adc1_config_channel_atten(s.channel, ADC_ATTEN_DB_11);
-    esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &s.chars);
+    adc1_config_channel_atten(s.channel, ADC_ATTEN_DB_12);
+    esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 1100, &s.chars);
 }
 
 void current_sensor_init() {

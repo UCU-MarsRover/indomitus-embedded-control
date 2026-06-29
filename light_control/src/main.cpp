@@ -3,6 +3,9 @@
 #include "can_manager.hpp"
 #include "light_manager.hpp"
 #include "current_sensor.hpp"
+#include "freertos/queue.h"
+
+extern QueueHandle_t can_tx_queue;
 
 void setup() {
     Serial.begin(115200);
@@ -12,7 +15,9 @@ void setup() {
     ESP_LOGI("SETUP", "Start Initialization!");
 
     light_init();
-    can_init_1mbs_accept_all();
+    can_init();
+
+    can_tx_queue = xQueueCreate(10, sizeof(CanTxMsg));
 
     xTaskCreatePinnedToCore(can_rx_task, "can_rx", 4096, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(can_tx_task, "can_tx", 4096, nullptr, 3, nullptr, 0);

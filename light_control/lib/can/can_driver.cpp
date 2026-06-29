@@ -1,7 +1,7 @@
 #include "can_driver.hpp"
 #include "pins.hpp"
 
-void can_init_1mbs_accept_all() {
+void can_init() {
     twai_general_config_t g = {};
     g.mode = TWAI_MODE_NORMAL;
     g.tx_io = Pins::CAN_TX;
