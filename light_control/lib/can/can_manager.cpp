@@ -7,11 +7,11 @@
 static const char *TAG = "CAN_LOG";
 extern QueueHandle_t light_queue;
 
-using namespace CanProtocol;
+namespace Can = CanProtocol;
 
 static void send_light_response(uint8_t cmd, uint8_t status) {
     const uint8_t payload[2] = {cmd, status};
-    const esp_err_t err = can_send(RESP_ID, payload, 2);
+    const esp_err_t err = can_send(Can::RESP_ID, payload, 2);
 #ifdef DEBUG_ENABLED
     ESP_LOGI(TAG, "TX cmd=0x%02X status=0x%02X result=%s",
              cmd, status, err == ESP_OK ? "OK" : "FAIL");
@@ -19,7 +19,7 @@ static void send_light_response(uint8_t cmd, uint8_t status) {
 }
 
 static void handle_command(const CanMsg& msg) {
-    if (msg.id != CMD_ID || msg.len < 1) {
+    if (msg.id != Can::CMD_ID || msg.len < 1) {
 #if DEBUG_ENABLED
         ESP_LOGW(TAG, "Ignored msg id=0x%03lX len=%d", msg.id, msg.len);
 #endif
@@ -33,39 +33,38 @@ static void handle_command(const CanMsg& msg) {
     bool valid = true;
 
     switch (msg.data[0]) {
-        case CMD_SPOTLIGHT_ON:
+        case Can::CMD_SPOTLIGHT_ON:
             lc = {LightCmd::SPOTLIGHT_ON, 0};
-            send_light_response(CMD_SPOTLIGHT_ON, STATUS_OK);
+            send_light_response(Can::CMD_SPOTLIGHT_ON, Can::STATUS_OK);
             break;
-        case CMD_SPOTLIGHT_OFF:
+        case Can::CMD_SPOTLIGHT_OFF:
             lc = {LightCmd::SPOTLIGHT_OFF, 0};
-            send_light_response(CMD_SPOTLIGHT_OFF, STATUS_OK);
+            send_light_response(Can::CMD_SPOTLIGHT_OFF, Can::STATUS_OK);
             break;
-        case CMD_BEAUTIFUL_LIGHT_ON:
+        case Can::CMD_BEAUTIFUL_LIGHT_ON:
             lc = {LightCmd::BEAUTIFUL_ON, 0};
-            send_light_response(CMD_BEAUTIFUL_LIGHT_ON, STATUS_OK);
+            send_light_response(Can::CMD_BEAUTIFUL_LIGHT_ON, Can::STATUS_OK);
             break;
-        case CMD_BEAUTIFUL_LIGHT_OFF:
+        case Can::CMD_BEAUTIFUL_LIGHT_OFF:
             lc = {LightCmd::BEAUTIFUL_OFF, 0};
-            send_light_response(CMD_BEAUTIFUL_LIGHT_OFF, STATUS_OK);
+            send_light_response(Can::CMD_BEAUTIFUL_LIGHT_OFF, Can::STATUS_OK);
             break;
-        case CMD_TRAFFIC_LIGHT:
+        case Can::CMD_TRAFFIC_LIGHT:
             if (msg.len < 2) {
-                send_light_response(CMD_TRAFFIC_LIGHT, STATUS_ERROR);
+                send_light_response(Can::CMD_TRAFFIC_LIGHT, Can::STATUS_ERROR);
                 valid = false;
             } else {
                 lc = {LightCmd::TRAFFIC_MASK, msg.data[1]};
-                send_light_response(CMD_TRAFFIC_LIGHT, STATUS_OK);
+                send_light_response(Can::CMD_TRAFFIC_LIGHT, Can::STATUS_OK);
             }
             break;
         default:
-            send_light_response(msg.data[0], STATUS_ERROR);
+            send_light_response(msg.data[0], Can::STATUS_ERROR);
             valid = false;
             break;
     }
 
     if (valid) {
-        // не блокуємось — якщо черга повна, просто пропускаємо
         xQueueSend(light_queue, &lc, 0);
     }
 }

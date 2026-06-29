@@ -10,6 +10,8 @@
 
 static const char* TAG = "CURRENT";
 
+namespace Can = CanProtocol;
+
 #define SENSITIVITY  0.040f
 #define V_OFFSET     1.65f
 #define WINDOW_SIZE  9
@@ -97,7 +99,7 @@ void current_telemetry_task(void*) {
         memcpy(payload,     &current1, sizeof(float));
         memcpy(payload + 4, &current2, sizeof(float));
 
-        can_tx_enqueue(CanProtocol::TELEMETRY_CURRENT_ID, payload, 8);
+        can_tx_enqueue(Can::TELEMETRY_CURRENT_ID, payload, 8);
 
 #if DEBUG_ENABLED
         ESP_LOGI(TAG, "current1=%.3fA current2=%.3fA", current1, current2);
