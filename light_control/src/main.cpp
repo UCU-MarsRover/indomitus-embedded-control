@@ -16,13 +16,14 @@ void setup() {
 
     light_init();
     can_init();
+    current_sensor_init();
 
     can_tx_queue = xQueueCreate(10, sizeof(CanTxMsg));
 
     xTaskCreatePinnedToCore(can_rx_task, "can_rx", 4096, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(can_tx_task, "can_tx", 4096, nullptr, 3, nullptr, 0);
-    xTaskCreatePinnedToCore(light_task, "light_task", 2048, nullptr, 4, nullptr, 1);
-    xTaskCreatePinnedToCore(current_telemetry_task, "current_telemetry_task", 2048, nullptr, 4, nullptr, 1);
+    xTaskCreatePinnedToCore(light_task, "light_task", 4096, nullptr, 4, nullptr, 1);
+    xTaskCreatePinnedToCore(current_telemetry_task, "current_telemetry_task", 4096, nullptr, 4, nullptr, 1);
 }
 
 void loop() {

@@ -66,7 +66,7 @@ static float sensor_read(CurrentSensor& s) {
 }
 
 void current_telemetry_task(void*) {
-    const TickType_t period    = pdMS_TO_TICKS(100);
+    const TickType_t period    = pdMS_TO_TICKS(1000);
     TickType_t       last_wake = xTaskGetTickCount();
 
     for (;;) {
