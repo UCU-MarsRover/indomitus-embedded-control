@@ -78,9 +78,9 @@ void can_rx_task(void*) {
         if (can_recv(msg, 2000) == ESP_OK) {
             handle_command(msg);
         }
-#if DEBUG_ENABLED
-        ESP_LOGI(TAG, "last_command=%lu", last_command);
-#endif
+// #if DEBUG_ENABLED
+//         ESP_LOGI(TAG, "last_command=%lu", last_command);
+// #endif
     }
 }
 
@@ -103,12 +103,43 @@ void can_tx_task(void*) {
     CanTxMsg msg;
     for (;;) {
         if (xQueueReceive(can_tx_queue, &msg, portMAX_DELAY) == pdTRUE) {
-            const esp_err_t err = can_send(msg.id, msg.data, msg.len);
+
+            twai_status_info_t status_info;
+            if (twai_get_status_info(&status_info) == ESP_OK) {
+                if (status_info.state == TWAI_STATE_BUS_OFF) {
+                    ESP_LOGE(TAG, "CAN Bus-Off! Waiting for hardware to cool down...");
+                    twai_initiate_recovery(); 
+                    vTaskDelay(pdMS_TO_TICKS(200)); 
+                } 
+                else if (status_info.state == TWAI_STATE_STOPPED) {
+                    ESP_LOGW(TAG, "Re-starting TWAI driver...");
+                    twai_start();
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                }
+            }
+
+            const esp_err_t err = can_send(msg.id, msg.data, msg.len, 10);
 #if DEBUG_ENABLED
+            twai_get_status_info(&status_info);
+            ESP_LOGI(TAG, "TEC=%lu REC=%lu msgs_to_tx=%lu", 
+                    status_info.tx_error_counter, status_info.rx_error_counter, status_info.msgs_to_tx);
             if (err != ESP_OK) {
-                ESP_LOGE(TAG, "CAN TX failed id=0x%03lX err=%d", msg.id, err);
+                UBaseType_t msgs_cnt = uxQueueMessagesWaiting(can_tx_queue);
+                ESP_LOGE(TAG, "CAN TX failed id=0x%03lX err=%d len=%u", msg.id, err, (unsigned int)msgs_cnt);
             }
 #endif
         }
+    }
+}
+
+void can_monitor_task(void*) {
+    for (;;) {
+        twai_status_info_t s;
+        if (twai_get_status_info(&s) == ESP_OK) {
+            ESP_LOGI("CAN_MON", "state=%d TEC=%lu REC=%lu bus_err=%lu arb_lost=%lu tx_failed=%lu",
+                     s.state, s.tx_error_counter, s.rx_error_counter,
+                     s.bus_error_count, s.arb_lost_count, s.tx_failed_count);
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }

@@ -31,3 +31,4 @@ void can_rx_task(void*);
 extern QueueHandle_t can_tx_queue;
 void can_tx_enqueue(uint32_t id, const uint8_t* data, uint8_t len);
 void can_tx_task(void*);
+void can_monitor_task(void*);

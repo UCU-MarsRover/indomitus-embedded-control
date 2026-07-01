@@ -2,8 +2,10 @@
 #include "pins.hpp"
 
 void can_init() {
+    twai_driver_uninstall();
+    
     twai_general_config_t g = {};
-    g.mode = TWAI_MODE_NORMAL;
+    g.mode = TWAI_MODE_NO_ACK;
     g.tx_io = Pins::CAN_TX;
     g.rx_io = Pins::CAN_RX;
     g.clkout_io = GPIO_NUM_NC;

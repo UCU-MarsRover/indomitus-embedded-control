@@ -79,9 +79,9 @@ void current_telemetry_task(void*) {
 
         can_tx_enqueue(Can::TELEMETRY_CURRENT_ID, payload, 8);
 
-#ifdef DEBUG_ENABLED
-        ESP_LOGI(TAG, "current1=%.3fA current2=%.3fA", current1, current2);
-#endif
+// #ifdef DEBUG_ENABLED
+//         ESP_LOGI(TAG, "current1=%.3fA current2=%.3fA", current1, current2);
+// #endif
 
         vTaskDelayUntil(&last_wake, period);
     }
