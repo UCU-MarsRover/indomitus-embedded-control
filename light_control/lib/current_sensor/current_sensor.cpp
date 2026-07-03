@@ -41,7 +41,8 @@ void current_sensor_init() {
 static float raw_to_current(CurrentSensor& s) {
     int raw = adc1_get_raw(s.channel);
     uint32_t voltage_mv = esp_adc_cal_raw_to_voltage(raw, &s.chars);
-    return (voltage_mv / 1000.0f - V_OFFSET) / SENSITIVITY;
+    // return (voltage_mv / 1000.0f - V_OFFSET) / SENSITIVITY;
+    return raw;
 }
 
 static float sensor_read(CurrentSensor& s) {
@@ -77,11 +78,11 @@ void current_telemetry_task(void*) {
         memcpy(payload,     &current1, sizeof(float));
         memcpy(payload + 4, &current2, sizeof(float));
 
-        can_tx_enqueue(Can::TELEMETRY_CURRENT_ID, payload, 8);
+        // can_tx_enqueue(Can::TELEMETRY_CURRENT_ID, payload, 8);
 
-// #ifdef DEBUG_ENABLED
-//         ESP_LOGI(TAG, "current1=%.3fA current2=%.3fA", current1, current2);
-// #endif
+#ifdef DEBUG_ENABLED
+        ESP_LOGI(TAG, "current1=%.3fA current2=%.3fA", current1, current2);
+#endif
 
         vTaskDelayUntil(&last_wake, period);
     }

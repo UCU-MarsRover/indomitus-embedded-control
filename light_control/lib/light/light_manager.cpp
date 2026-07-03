@@ -4,6 +4,7 @@
 #include "light_manager.hpp"
 #include "light_command.hpp"
 #include "pins.hpp"
+#include "esp_log.h"
 
 QueueHandle_t light_queue = nullptr;
 
@@ -42,6 +43,9 @@ void light_task(void*) {
     LightCommand lc;
     for (;;) {
         if (xQueueReceive(light_queue, &lc, portMAX_DELAY) == pdTRUE) {
+#ifdef DEBUG_ENABLED
+            ESP_LOGI("Light_task", "command=%d", lc.cmd);
+#endif
             switch (lc.cmd) {
                 case LightCmd::SPOTLIGHT_ON:   light_set_spotlight(true);      break;
                 case LightCmd::SPOTLIGHT_OFF:  light_set_spotlight(false);     break;

@@ -76,6 +76,7 @@ void can_rx_task(void*) {
     for (;;) {
         CanMsg msg;
         if (can_recv(msg, 2000) == ESP_OK) {
+            ESP_LOGI(TAG, "%d\n", msg.data[0]);
             handle_command(msg);
         }
 // #if DEBUG_ENABLED
@@ -104,17 +105,30 @@ void can_tx_task(void*) {
     for (;;) {
         if (xQueueReceive(can_tx_queue, &msg, portMAX_DELAY) == pdTRUE) {
 
+            
             twai_status_info_t status_info;
             if (twai_get_status_info(&status_info) == ESP_OK) {
                 if (status_info.state == TWAI_STATE_BUS_OFF) {
-                    ESP_LOGE(TAG, "CAN Bus-Off! Waiting for hardware to cool down...");
+                    ESP_LOGE(TAG, "CAN Bus-Off! Recovering...");
                     twai_initiate_recovery(); 
-                    vTaskDelay(pdMS_TO_TICKS(200)); 
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    // скидаємо обидві черги після bus-off
+                    twai_clear_transmit_queue();
+                    xQueueReset(can_tx_queue);
+                    continue; // не намагатись слати одразу після відновлення
                 } 
                 else if (status_info.state == TWAI_STATE_STOPPED) {
                     ESP_LOGW(TAG, "Re-starting TWAI driver...");
                     twai_start();
                     vTaskDelay(pdMS_TO_TICKS(50));
+                }
+
+                // скидаємо якщо апаратна черга переповнена
+                if (status_info.msgs_to_tx >= 8) {
+                    ESP_LOGW(TAG, "TX queue overflow, clearing...");
+                    twai_clear_transmit_queue();
+                    xQueueReset(can_tx_queue);
+                    continue;
                 }
             }
 

@@ -13,7 +13,7 @@ void can_full_reinit() {
     twai_driver_uninstall();
 
     twai_general_config_t g = {};
-    g.mode = TWAI_MODE_NO_ACK;
+    g.mode = TWAI_MODE_NORMAL;
     g.tx_io = Pins::CAN_TX;
     g.rx_io = Pins::CAN_RX;
     g.clkout_io = GPIO_NUM_NC;
@@ -46,15 +46,15 @@ void setup() {
 
     light_init();
     can_init();
-    current_sensor_init();
+    // current_sensor_init();
 
     can_tx_queue = xQueueCreate(10, sizeof(CanTxMsg));
 
     xTaskCreatePinnedToCore(can_rx_task, "can_rx", 4096, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(can_tx_task, "can_tx", 4096, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(light_task, "light_task", 4096, nullptr, 4, nullptr, 1);
-    xTaskCreatePinnedToCore(current_telemetry_task, "current_telemetry_task", 4096, nullptr, 4, nullptr, 1);
-    // xTaskCreatePinnedToCore(can_monitor_task, "can_monitor_task", 4096, nullptr, 4, nullptr, 1);
+    // xTaskCreatePinnedToCore(current_telemetry_task, "current_telemetry_task", 4096, nullptr, 4, nullptr, 1);
+    xTaskCreatePinnedToCore(can_monitor_task, "can_monitor_task", 4096, nullptr, 4, nullptr, 1);
 }
 
 void loop() {
