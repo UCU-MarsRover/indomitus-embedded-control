@@ -6,7 +6,7 @@
 #include "pins.hpp"
 #include "esp_log.h"
 
-QueueHandle_t light_queue = nullptr;
+extern QueueHandle_t light_queue;
 
 void light_init() {
     pinMode(Pins::SPOTLIGHT, OUTPUT);
@@ -19,8 +19,6 @@ void light_init() {
     light_set_spotlight(false);
     light_set_beautiful(false);
     light_set_traffic_mask(0x00);
-
-    light_queue = xQueueCreate(16, sizeof(LightCommand));
 }
 
 void light_set_spotlight(bool enabled) {

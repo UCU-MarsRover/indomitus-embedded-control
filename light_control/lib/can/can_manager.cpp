@@ -6,7 +6,7 @@
 
 static const char *TAG = "CAN_LOG";
 extern QueueHandle_t light_queue;
-QueueHandle_t can_tx_queue = nullptr;
+extern QueueHandle_t can_tx_queue;
 
 namespace Can = CanProtocol;
 
@@ -23,8 +23,6 @@ static void handle_command(const CanMsg& msg) {
         ESP_LOGW(TAG, "Ignored msg id=0x%03lX len=%d", msg.id, msg.len);
         return;
     }
-
-    ESP_LOGD(TAG, "RX id=0x%03lX data[0]=0x%02X", msg.id, msg.data[0]);
 
     LightCommand lc{};
     bool valid = true;
@@ -71,7 +69,7 @@ void can_rx_task(void*) {
     for (;;) {
         CanMsg msg;
         if (can_recv(msg, 2000) == ESP_OK) {
-            ESP_LOGD(TAG, "%d\n", msg.data[0]);
+            ESP_LOGD(TAG, "RX id=0x%03lX data[0]=0x%02X", msg.id, msg.data[0]);
             handle_command(msg);
         }
     }

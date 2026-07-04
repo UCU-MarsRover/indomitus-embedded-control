@@ -7,21 +7,21 @@
 #include "pins.hpp"
 
 
-extern QueueHandle_t can_tx_queue;
+QueueHandle_t can_tx_queue = nullptr;
+QueueHandle_t light_queue = nullptr;
 
 
 void setup() {
     Serial.begin(115200);
-    
-    delay(2000);
 
-    ESP_LOGI("SETUP", "Start Initialization!");
+    ESP_LOGD("SETUP", "Start Initialization!");
 
     light_init();
     can_init();
     // current_sensor_init();
 
     can_tx_queue = xQueueCreate(10, sizeof(CanTxMsg));
+    light_queue = xQueueCreate(16, sizeof(LightCommand));
 
     xTaskCreatePinnedToCore(can_rx_task, "can_rx", 4096, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(can_tx_task, "can_tx", 4096, nullptr, 3, nullptr, 0);

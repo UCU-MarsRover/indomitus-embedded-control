@@ -11,5 +11,5 @@ enum class LightCmd : uint8_t {
 
 struct LightCommand {
     LightCmd cmd;
-    uint8_t  value; // використовується тільки для TRAFFIC_MASK
+    uint8_t  value;
 };
