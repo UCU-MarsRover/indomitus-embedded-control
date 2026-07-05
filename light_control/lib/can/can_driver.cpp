@@ -1,7 +1,9 @@
 #include "can_driver.hpp"
 #include "pins.hpp"
 
-void can_init_1mbs_accept_all() {
+void can_init() {
+    twai_driver_uninstall();
+    
     twai_general_config_t g = {};
     g.mode = TWAI_MODE_NORMAL;
     g.tx_io = Pins::CAN_TX;
@@ -14,8 +16,18 @@ void can_init_1mbs_accept_all() {
     g.clkout_divider = 0;
     g.intr_flags = ESP_INTR_FLAG_LEVEL1;
 
-    const twai_timing_config_t t = TWAI_TIMING_CONFIG_1MBITS();
-    const twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+    const twai_timing_config_t t = {
+        .brp            = 4,      // baudrate prescaler
+        .tseg_1         = 14,     // prop_seg + phase_seg1
+        .tseg_2         = 5,      // phase_seg2
+        .sjw            = 3,
+        .triple_sampling = false,
+    };
+    const twai_filter_config_t f = {
+        .acceptance_code = 0x300 << 21,
+        .acceptance_mask = ~(0x7F0 << 21),
+        .single_filter = true,
+    };
 
     ESP_ERROR_CHECK(twai_driver_install(&g, &t, &f));
     ESP_ERROR_CHECK(twai_start());

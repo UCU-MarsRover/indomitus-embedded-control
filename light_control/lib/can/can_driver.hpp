@@ -23,7 +23,7 @@ struct CanMsg {
  * - RX pin: PIN_CAN_RX
  * - Filter: accept all frames
  */
-void can_init_1mbs_accept_all();
+void can_init();
 
 /**
  * @brief Send a standard CAN frame.
