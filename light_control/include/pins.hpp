@@ -15,6 +15,6 @@ namespace Pins {
     constexpr uint8_t GREEN = 42;
     constexpr uint8_t BLUE = 41;
 
-    constexpr adc_channel_t CURRENT_ADC_CHANNEL_1 = ADC_CHANNEL_8; // GPIO9
-    constexpr adc_channel_t CURRENT_ADC_CHANNEL_2 = ADC_CHANNEL_9; // GPIO10 
+    constexpr gpio_num_t I2C_SDA = GPIO_NUM_8;
+    constexpr gpio_num_t I2C_SCL = GPIO_NUM_9;
 }
