@@ -79,7 +79,7 @@ void power_telemetry_task(void*) {
 
         Serial.printf("INA228 voltage=%.4f V current=%.4f A\n", voltage, current);
 
-        //ESP_LOGD(TAG, "voltage=%.4fV current=%.4fA", voltage, current);
+        ESP_LOGD(TAG, "voltage=%.4fV current=%.4fA", voltage, current);
 
         vTaskDelayUntil(&last_wake, period);
     }

@@ -29,7 +29,7 @@ void setup() {
     xTaskCreatePinnedToCore(power_telemetry_task, "power_telemetry_task", 4096, nullptr, 4, nullptr, 1);
 
 #ifdef DEBUG_ENABLED
-    xTaskCreatePinnedToCore(can_monitor_task, "can_monitor_task", 4096, nullptr, 4, nullptr, 1);
+    // xTaskCreatePinnedToCore(can_monitor_task, "can_monitor_task", 4096, nullptr, 4, nullptr, 1);
 #endif
 }
 
