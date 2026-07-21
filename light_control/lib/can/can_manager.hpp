@@ -8,8 +8,7 @@ extern uint32_t last_command;
 namespace CanProtocol {
     constexpr uint32_t CMD_ID      = 0x300;
     constexpr uint32_t RESP_ID     = 0x301;
-    constexpr uint32_t TELEMETRY_CURRENT_ID = 0x302;
-    constexpr uint32_t TELEMETRY_VOLTAGE_ID = 0x303;
+    constexpr uint32_t TELEMETRY_ID = 0x302;
 
     constexpr uint8_t CMD_SPOTLIGHT_ON  = 0x01;
     constexpr uint8_t CMD_SPOTLIGHT_OFF = 0x02;

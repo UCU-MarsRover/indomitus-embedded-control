@@ -12,8 +12,8 @@ namespace Can = CanProtocol;
 // INA228 I2C address and conversion constants
 static constexpr uint8_t INA228_ADDR = 0x45;
 static constexpr float BUS_VOLTAGE_LSB = 0.0001953125f; // 195.3125 µV/LSB
-static constexpr float CURRENT_LSB     = 0.000390625f;  // A/LSB (for Rshunt=0.0002Ω)
-static constexpr uint16_t SHUNT_CAL_VALUE = 1024;
+static constexpr float CURRENT_LSB     = 0.0000953674f; // A/LSB (Imax=50A, Rshunt=0.0002Ω)
+static constexpr uint16_t SHUNT_CAL_VALUE = 250;         //Imax=50A
 
 static void writeRegister16(uint8_t reg, uint16_t value) {
     Wire.beginTransmission(INA228_ADDR);
@@ -46,7 +46,7 @@ void power_sensor_init() {
 }
 
 void power_telemetry_task(void*) {
-    const TickType_t period    = pdMS_TO_TICKS(1000);
+    const TickType_t period    = pdMS_TO_TICKS(200);
     TickType_t       last_wake = xTaskGetTickCount();
 
     for (;;) {
@@ -70,12 +70,10 @@ void power_telemetry_task(void*) {
             ESP_LOGW(TAG, "Failed to read current");
         }
 
-        uint8_t payload[4];
+        uint8_t payload[8];
         memcpy(payload, &current, sizeof(float));
-        can_tx_enqueue(Can::TELEMETRY_CURRENT_ID, payload, 4);
-
-        memcpy(payload, &voltage, sizeof(float));
-        can_tx_enqueue(Can::TELEMETRY_VOLTAGE_ID, payload, 4);
+        memcpy(payload + sizeof(float), &voltage, sizeof(float));
+        can_tx_enqueue(Can::TELEMETRY_ID, payload, sizeof(payload));
 
         Serial.printf("INA228 voltage=%.4f V current=%.4f A\n", voltage, current);
 
