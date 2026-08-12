@@ -4,10 +4,13 @@
 #include "can_manager.hpp"
 #include "power_sensor.hpp"
 #include "pins.hpp"
+#include <atomic>
 
 static const char* TAG = "INA228";
 
 namespace Can = CanProtocol;
+
+std::atomic<bool> power_telemetry_enabled{false};
 
 // INA228 I2C address and conversion constants
 static constexpr uint8_t INA228_ADDR = 0x45;
@@ -50,6 +53,11 @@ void power_telemetry_task(void*) {
     TickType_t       last_wake = xTaskGetTickCount();
 
     for (;;) {
+        if (!power_telemetry_enabled) {
+            vTaskDelay(period);
+            continue;
+        }
+
         float voltage = 0.0f;
         float current = 0.0f;
 

@@ -16,6 +16,9 @@ namespace CanProtocol {
     constexpr uint8_t CMD_BEAUTIFUL_LIGHT_ON  = 0x04;
     constexpr uint8_t CMD_BEAUTIFUL_LIGHT_OFF = 0x05;
 
+    constexpr uint8_t CMD_TELEMETRY_ENABLE = 0x10;
+    constexpr uint8_t CMD_TELEMETRY_DISABLE = 0x11;
+
     constexpr uint8_t STATUS_OK    = 0x00;
     constexpr uint8_t STATUS_ERROR = 0x01;
 }

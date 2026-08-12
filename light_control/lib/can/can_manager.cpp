@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "Arduino.h"
 #include "freertos/queue.h"
+#include "power_sensor.hpp"
 
 static const char *TAG = "CAN_LOG";
 extern QueueHandle_t light_queue;
@@ -10,7 +11,7 @@ extern QueueHandle_t can_tx_queue;
 
 namespace Can = CanProtocol;
 
-static void send_light_response(uint8_t cmd, uint8_t status) {
+static void send_response(uint8_t cmd, uint8_t status) {
     const uint8_t payload[2] = {cmd, status};
     const esp_err_t err = can_send(Can::RESP_ID, payload, 2);
 
@@ -24,37 +25,48 @@ static void handle_command(const CanMsg& msg) {
         return;
     }
 
+    if (msg.data[0] == Can::CMD_TELEMETRY_ENABLE) {
+        power_telemetry_enabled = true;
+        send_response(Can::CMD_TELEMETRY_ENABLE, Can::STATUS_OK);
+        return;
+    } else if (msg.data[0] == Can::CMD_TELEMETRY_DISABLE) {
+        power_telemetry_enabled = false;
+        send_response(Can::CMD_TELEMETRY_DISABLE, Can::STATUS_OK);
+        return;
+    }
+
     LightCommand lc{};
     bool valid = true;
 
     switch (msg.data[0]) {
         case Can::CMD_SPOTLIGHT_ON:
             lc = {LightCmd::SPOTLIGHT_ON, 0};
-            send_light_response(Can::CMD_SPOTLIGHT_ON, Can::STATUS_OK);
+            send_response(Can::CMD_SPOTLIGHT_ON, Can::STATUS_OK);
             break;
         case Can::CMD_SPOTLIGHT_OFF:
             lc = {LightCmd::SPOTLIGHT_OFF, 0};
-            send_light_response(Can::CMD_SPOTLIGHT_OFF, Can::STATUS_OK);
+            send_response(Can::CMD_SPOTLIGHT_OFF, Can::STATUS_OK);
             break;
         case Can::CMD_BEAUTIFUL_LIGHT_ON:
             lc = {LightCmd::BEAUTIFUL_ON, 0};
-            send_light_response(Can::CMD_BEAUTIFUL_LIGHT_ON, Can::STATUS_OK);
+            send_response(Can::CMD_BEAUTIFUL_LIGHT_ON, Can::STATUS_OK);
             break;
         case Can::CMD_BEAUTIFUL_LIGHT_OFF:
             lc = {LightCmd::BEAUTIFUL_OFF, 0};
-            send_light_response(Can::CMD_BEAUTIFUL_LIGHT_OFF, Can::STATUS_OK);
+            send_response(Can::CMD_BEAUTIFUL_LIGHT_OFF, Can::STATUS_OK);
             break;
         case Can::CMD_TRAFFIC_LIGHT:
             if (msg.len < 2) {
-                send_light_response(Can::CMD_TRAFFIC_LIGHT, Can::STATUS_ERROR);
+                send_response(Can::CMD_TRAFFIC_LIGHT, Can::STATUS_ERROR);
                 valid = false;
             } else {
                 lc = {LightCmd::TRAFFIC_MASK, msg.data[1]};
-                send_light_response(Can::CMD_TRAFFIC_LIGHT, Can::STATUS_OK);
+                send_response(Can::CMD_TRAFFIC_LIGHT, Can::STATUS_OK);
             }
             break;
+
         default:
-            send_light_response(msg.data[0], Can::STATUS_ERROR);
+            send_response(msg.data[0], Can::STATUS_ERROR);
             valid = false;
             break;
     }
