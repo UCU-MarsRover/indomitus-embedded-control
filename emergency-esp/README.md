@@ -12,13 +12,24 @@ itself is application code.
 |------|------------------|-----------|-------------------------------------------|
 | 0    | `RADIO_RX`       | in        | UART1, to radio TX                        |
 | 1    | `RADIO_TX`       | out       | UART1, to radio RX                        |
+| 2    | `JETSON_RESET`   | out       | Opto LED, **active LOW**. **10k PU to 3V3** |
 | 3    | `ESTOP_BUTTON`   | in        | Active high, internal pulldown            |
 | 4    | `JETSON_CAN_CUT` | out       | Gate. HIGH = Jetson isolated. **10k PD**  |
 | 5    | `POWER_CUT`      | out       | Gate. HIGH = rover dead. **10k PD**       |
-| 6    | `CAN_TX`         | out       | TWAI, to transceiver TXD                  |
-| 7    | `CAN_RX`         | in        | TWAI, to transceiver RXD                  |
+| 6    | `RADIO_M0`       | out       | Radio mode select. **10k PD**             |
+| 7    | `RADIO_M1`       | out       | Radio mode select. **10k PD**             |
+| 10   | `CAN_RX`         | in        | TWAI, to transceiver RXD                  |
+| 20   | `CAN_TX`         | out       | TWAI, to transceiver TXD. **10k PU to 3V3** |
 
-Free: 2, 8, 9 (strapping — avoid for anything critical), 10, 20/21 (debug UART).
+Free: 8, 9 (strapping — avoid for anything critical), 21 (debug TX).
+
+Three controlled outputs, one job each: cut rover power (5), cut the Jetson off
+CAN (4), reset the Jetson (2).
+
+`CAN_TX` is on GPIO20 (U0RXD), an input at reset whose internal pullup holds the
+transceiver recessive through boot. GPIO21 is avoided for CAN: it is U0TXD and
+emits the bootloader log at every reset, which a transceiver would inject onto
+the bus as error frames.
 
 Why these: GPIO 11–17 are the internal SPI flash; 2/8/9 are strapping pins
 sampled at reset with boot-time pulls; 18/19 are USB D-/D+. The two gate lines
@@ -41,6 +52,33 @@ Recommended alongside it: a 100 nF gate-to-GND cap to swallow injected noise,
 and the ESP's brownout detector left enabled so a sagging rail resets the chip
 into that pulled-down state rather than executing on marginal logic.
 
+### Jetson reset is wired differently
+
+`JETSON_RESET` is the odd one out — **active low, with a 10k pull*up*.** Two
+constraints force it:
+
+- `SYS_RESET*` on the reComputer's REC switch header is a **1.8 V open-drain**
+  input, asserted by pulling to GND. Driving 3V3 into it can damage the Orin.
+- GPIO2 is an ESP32-C3 **strapping pin that must read HIGH at reset**. The 10k
+  pulldown a directly-driven gate needs would stop the ESP booting.
+
+An optocoupler the ESP *sinks* solves both, and isolates the two boards:
+
+```
+3V3 ──[330R]──▶|── GPIO2        (opto LED, cathode to ESP)
+GPIO2 ──[10k]── 3V3              (holds the boot strap high)
+opto collector → header pin 8 (SYS_RESET*)
+opto emitter   → header pin 7  (header GND)
+```
+
+GPIO2 high = idle. GPIO2 low = Jetson resets. Note the failure mode: a fault
+holding GPIO2 low across an ESP reset boots the ESP into serial-download mode.
+Recoverable, but it's the price of using the last strapping pin.
+
+The REC switch header also exposes `PWR_BTN*` (pin 12) for an orderly shutdown
+via a >10 s hold. Not wired — one pin, one job — but it's there if you later
+want the Jetson to unmount its SSD before `PowerCut::engage()`.
+
 ### Fail-safe direction
 
 Worth being explicit about: because HIGH means "cut", a dead or unpowered
@@ -57,6 +95,7 @@ inverting the driver in hardware, not a firmware change.
 | [safety_output](lib/safety_output/safety_output.hpp) | `SafetyOutput` | Glitch-free critical output primitive; used by the two below |
 | [power_cut](lib/power_cut/power_cut.hpp) | `PowerCut::` | `engage()` / `release()` / `is_engaged()` / `verify()` |
 | [jetson_can_cut](lib/jetson_can_cut/jetson_can_cut.hpp) | `JetsonCanCut::` | `isolate()` / `connect()` / `is_isolated()` / `verify()` |
+| [jetson_reset](lib/jetson_reset/jetson_reset.hpp) | `JetsonReset::` | `reset()` / `update()` / `is_busy()` — non-blocking 100 ms pulse |
 | [estop_button](lib/estop_button/estop_button.hpp) | `EstopButton::` | Debounced `poll()` returning press/release edges |
 | [can](lib/can/can_driver.hpp) | `can_init/send/recv` | 1 Mbit TWAI, same API as `light_control` |
 | [can](lib/can/can_service.hpp) | `CanService::` | Optional FreeRTOS RX/TX tasks with a frame callback |
@@ -100,3 +139,17 @@ pio run -e debug      # verbose logging
 pio run -e release    # logging off
 pio run -e debug -t upload
 ```
+
+### CAN bring-up test
+
+`src/main_test_can.cpp` starts the CanService tasks, sends a frame on **0x303**
+every second, and logs all bus traffic plus controller counters every 5 s.
+
+```sh
+pio run -e test_can -t upload -t monitor
+```
+
+Healthy output is `state=1` with TEC/REC pinned at 0. If TEC climbs toward 128
+and the node goes bus-off, nothing is ACKing — a CAN node cannot ACK its own
+frame, so at least one other active node must be on the bus and both ends need
+120 Ω termination.

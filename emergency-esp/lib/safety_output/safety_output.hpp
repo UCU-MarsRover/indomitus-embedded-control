@@ -40,25 +40,34 @@ extern "C" {
 class SafetyOutput {
 public:
     /**
-     * @param pin      Pad to drive.
-     * @param rtc_hold Latch the pad with gpio_hold_en() after each write. Only
-     *                 valid for RTC-capable pads (GPIO0..5 on the ESP32-C3);
-     *                 pass false for any other pad.
+     * @param pin         Pad to drive.
+     * @param rtc_hold    Latch the pad with gpio_hold_en() after each write.
+     *                    Only valid for RTC-capable pads (GPIO0..5 on the
+     *                    ESP32-C3); pass false for any other pad.
+     * @param active_high true  = HIGH asserts the line, LOW is the safe idle
+     *                            state (a MOSFET gate driven directly).
+     *                    false = LOW asserts the line, HIGH is the safe idle
+     *                            state (an inverting stage such as an opto
+     *                            whose LED the ESP sinks, or a strapping pin
+     *                            that must idle high).
+     *
+     * Everything below is phrased in terms of active/inactive, not high/low, so
+     * the safe state is whichever level does *not* assert the line.
      */
-    SafetyOutput(gpio_num_t pin, bool rtc_hold);
+    SafetyOutput(gpio_num_t pin, bool rtc_hold, bool active_high = true);
 
     /**
-     * @brief Configure the pad, guaranteeing it never drives HIGH on the way.
+     * @brief Configure the pad, guaranteeing it never asserts on the way.
      *
      * Call this as the very first thing in setup(), before any other peripheral
-     * init. It takes the pad away from whatever it was doing and parks it low.
-     * Idempotent.
+     * init. It takes the pad away from whatever it was doing and parks it in
+     * the inactive state. Idempotent.
      */
     void init();
 
     /**
      * @brief Drive the line.
-     * @param active true = HIGH = cut engaged, false = LOW = normal operation.
+     * @param active true asserts the line, false returns it to the safe state.
      */
     void set(bool active);
 
@@ -72,8 +81,8 @@ public:
      * @brief Re-assert the intended level and repair corruption.
      *
      * Call periodically (every 20-100 ms) from a task or from loop(). If the
-     * redundant copies disagree the line is forced LOW, which is the safe
-     * state, and the fault is reported.
+     * redundant copies disagree the line is forced to its inactive state, and
+     * the fault is reported.
      *
      * @return true if a mismatch or corruption was detected and corrected.
      */
@@ -84,9 +93,12 @@ public:
 
 private:
     void write_raw(bool level);
+    /// Pad level that corresponds to @p active for this line's polarity.
+    bool level_for(bool active) const;
 
     const gpio_num_t pin_;
     const bool rtc_hold_;
+    const bool active_high_;
 
     // Redundant storage: desired_ and desired_inv_ must always be complements.
     volatile uint32_t desired_;

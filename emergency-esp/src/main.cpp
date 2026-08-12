@@ -20,6 +20,7 @@
 #include "can_driver.hpp"
 #include "estop_button.hpp"
 #include "jetson_can_cut.hpp"
+#include "jetson_reset.hpp"
 #include "power_cut.hpp"
 #include "radio_link.hpp"
 
@@ -39,6 +40,7 @@ void setup() {
     // until this point.
     PowerCut::init();
     JetsonCanCut::init();
+    JetsonReset::init();
 
     // ---- Everything else ---------------------------------------------------
     EstopButton::init();
@@ -81,13 +83,20 @@ void loop() {
     // it protects a runaway rover, but it also means every radio dropout kills
     // the machine. Pick deliberately.
 
+    // ---- Timed pulses ------------------------------------------------------
+    // Releases the Jetson reset line when its pulse is up. Cheap, and must run
+    // every iteration so a reset is never held longer than intended.
+    JetsonReset::update();
+
     // ---- Periodic integrity ------------------------------------------------
     if (now - last_verify >= VERIFY_INTERVAL_MS) {
         last_verify = now;
-        // Re-assert both gate lines and repair the pad if anything disturbed
-        // it. Keep these running no matter what state the application is in.
+        // Re-assert the three controlled lines and repair the pad if anything
+        // disturbed it. Keep these running no matter what state the
+        // application is in.
         PowerCut::verify();
         JetsonCanCut::verify();
+        JetsonReset::verify();
     }
 
     if (now - last_can_health >= CAN_HEALTH_INTERVAL_MS) {

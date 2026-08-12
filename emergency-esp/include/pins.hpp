@@ -28,24 +28,31 @@
  * elsewhere in the firmware. Losing MTMS/MTDI (external JTAG) costs nothing
  * here since the C3 debugs over its built-in USB-Serial-JTAG.
  *
- * The radio is put on GPIO0/GPIO1 driven by UART1 rather than the default
- * UART0 pads (GPIO20/21). GPIO21 is U0TXD and emits the ROM bootloader log at
- * every single reset; sending that garbage into a radio link wastes airtime and
- * can upset modems that parse their input. GPIO20/21 stay free as a clean
- * debug-console header. GPIO0/1 are the 32 kHz crystal pads, which the
- * C3-MINI-1 leaves unpopulated, so they are ordinary GPIOs here.
+ * The radio is put on GPIO0/GPIO1 driven by UART1. GPIO0/1 are the 32 kHz
+ * crystal pads, which the C3-MINI-1 leaves unpopulated, so they are ordinary
+ * GPIOs here.
+ *
+ * CAN uses GPIO20 for TX and GPIO10 for RX. GPIO20 is U0RXD, an input at reset
+ * with an internal pullup, which conveniently holds the transceiver's TXD
+ * recessive through the boot window. GPIO21 is deliberately NOT used for CAN:
+ * it is U0TXD and emits the ROM plus second-stage bootloader log at every
+ * reset, which through a transceiver would inject that burst straight onto the
+ * bus as error frames. It stays free as an output-only debug TX.
  *
  * ---------------------------------------------------------------------------
  * Pin map
  * ---------------------------------------------------------------------------
  *   GPIO 0   RADIO_RX        <-- radio TX
  *   GPIO 1   RADIO_TX        --> radio RX
+ *   GPIO 2   JETSON_RESET    --> opto LED, ACTIVE LOW  [needs 10k pullup]
  *   GPIO 3   ESTOP_BUTTON    <-- button (active high)
  *   GPIO 4   JETSON_CAN_CUT  --> transistor gate  [needs 10k pulldown]
  *   GPIO 5   POWER_CUT       --> transistor gate  [needs 10k pulldown]
- *   GPIO 6   CAN_TX          --> transceiver TXD
- *   GPIO 7   CAN_RX          <-- transceiver RXD
- *   free: 2, 8, 9 (strapping), 10, 20, 21 (debug UART)
+ *   GPIO 6   RADIO_M0        --> radio mode select [needs 10k pulldown]
+ *   GPIO 7   RADIO_M1        --> radio mode select [needs 10k pulldown]
+ *   GPIO 10  CAN_RX          <-- transceiver RXD
+ *   GPIO 20  CAN_TX          --> transceiver TXD  [needs 10k pullup to 3V3]
+ *   spare: 8, 9 (strapping), 21 (debug TX)
  */
 namespace Pins {
 
@@ -81,5 +88,43 @@ constexpr gpio_num_t RADIO_TX = GPIO_NUM_1;
 constexpr int RADIO_UART_NUM = 1;
 /// Default radio baud rate. Override in RadioLink::init() if the modem differs.
 constexpr uint32_t RADIO_BAUD = 115200;
+
+/// Radio mode-select pins. M0=M1=0 is normal transparent mode.
+///
+/// These must never float: the module's internal pull-ups would read 1,1 =
+/// sleep/config mode and the radio would sit silent. Give each a 10k pulldown
+/// so the module comes up transparent before the ESP configures anything.
+constexpr gpio_num_t RADIO_M0 = GPIO_NUM_6;
+constexpr gpio_num_t RADIO_M1 = GPIO_NUM_7;
+
+// --- Jetson reset --------------------------------------------------------
+/// Resets the Jetson. Wired to SYS_RESET* on the reComputer's REC switch
+/// header (pin 8, with pin 7 as its GND).
+///
+/// ACTIVE LOW, unlike the two cut lines. Two facts force that:
+///
+///  1. SYS_RESET* is a 1.8V open-drain input, asserted by pulling it to GND.
+///     3V3 from an ESP pin can damage it, so the ESP must never drive it
+///     directly --- there has to be a stage in between.
+///  2. GPIO2 is an ESP32-C3 strapping pin and must read HIGH at reset. A 10k
+///     pulldown, which a directly-driven MOSFET gate would need, holds it low
+///     and stops the ESP booting.
+///
+/// Both are satisfied by an optocoupler the ESP *sinks*, which inverts the
+/// sense and isolates the two voltage domains:
+///
+///     3V3 --[330R]--|>|-- GPIO2      (opto LED, cathode to the ESP)
+///     GPIO2 --[10k]-- 3V3            (holds the strap high at reset)
+///     opto collector -> header pin 8 (SYS_RESET*)
+///     opto emitter   -> header pin 11/7 (header GND)
+///
+/// GPIO2 HIGH  = LED dark   = idle, Jetson running.
+/// GPIO2 LOW   = ESP sinks the LED = SYS_RESET* pulled down = Jetson resets.
+///
+/// @warning A fault that holds GPIO2 low across an ESP reset puts the ESP into
+///          serial-download mode instead of running the firmware. That is the
+///          cost of using the last strapping pin; it is recoverable by
+///          clearing the fault and power-cycling.
+constexpr gpio_num_t JETSON_RESET = GPIO_NUM_2;
 
 }  // namespace Pins

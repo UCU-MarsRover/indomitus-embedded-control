@@ -8,15 +8,20 @@ static const char* TAG = "SAFETY_OUT";
 
 // Sentinel values chosen so that an all-zero or all-one memory corruption never
 // looks like a legitimate state.
-static constexpr uint32_t STATE_LOW  = 0x5A5A5A5Au;
-static constexpr uint32_t STATE_HIGH = 0xA5A5A5A5u;
+static constexpr uint32_t STATE_INACTIVE = 0x5A5A5A5Au;
+static constexpr uint32_t STATE_ACTIVE   = 0xA5A5A5A5u;
 
-SafetyOutput::SafetyOutput(gpio_num_t pin, bool rtc_hold)
+SafetyOutput::SafetyOutput(gpio_num_t pin, bool rtc_hold, bool active_high)
     : pin_(pin),
       rtc_hold_(rtc_hold),
-      desired_(STATE_LOW),
-      desired_inv_(~STATE_LOW),
+      active_high_(active_high),
+      desired_(STATE_INACTIVE),
+      desired_inv_(~STATE_INACTIVE),
       faults_(0) {}
+
+bool SafetyOutput::level_for(bool active) const {
+    return active_high_ ? active : !active;
+}
 
 void SafetyOutput::write_raw(bool level) {
     // The pad may have been latched by a previous hold; release it, write, then
@@ -33,6 +38,8 @@ void SafetyOutput::write_raw(bool level) {
 }
 
 void SafetyOutput::init() {
+    const bool idle = level_for(false);
+
     // A hold left over from a previous boot would block every write below.
     gpio_hold_dis(pin_);
 
@@ -45,44 +52,48 @@ void SafetyOutput::init() {
     // to prevent.
     esp_rom_gpio_connect_out_signal(pin_, SIG_GPIO_OUT_IDX, false, false);
 
-    // Write the output latch to 0 *before* the driver is enabled. gpio_set_level
-    // updates the output register even while the pad is still an input, so when
-    // gpio_config() below switches the driver on, the only level it can ever
-    // present is 0. This is what makes bring-up glitch-free.
-    gpio_set_level(pin_, 0);
+    // Write the idle level to the output latch *before* the driver is enabled.
+    // gpio_set_level updates the output register even while the pad is still an
+    // input, so when gpio_config() below switches the driver on, the only level
+    // it can ever present is the idle one. This is what makes bring-up
+    // glitch-free.
+    gpio_set_level(pin_, idle ? 1 : 0);
 
     gpio_config_t cfg = {};
     cfg.pin_bit_mask = 1ULL << pin_;
     cfg.mode         = GPIO_MODE_OUTPUT;
-    cfg.pull_up_en   = GPIO_PULLUP_DISABLE;
-    // Kept on alongside the push-pull driver so the pad is biased low whenever
-    // the driver is not actively holding it. Weak (~45k) --- it reinforces the
-    // external pulldown, it does not replace it.
-    cfg.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    // The internal pull is kept on alongside the push-pull driver, biased
+    // toward the idle level, so the pad is held safe whenever the driver is not
+    // actively holding it. Weak (~45k) --- it reinforces the external resistor,
+    // it does not replace it.
+    cfg.pull_up_en   = idle ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
+    cfg.pull_down_en = idle ? GPIO_PULLDOWN_DISABLE : GPIO_PULLDOWN_ENABLE;
     cfg.intr_type    = GPIO_INTR_DISABLE;
     ESP_ERROR_CHECK(gpio_config(&cfg));
 
-    desired_     = STATE_LOW;
-    desired_inv_ = ~STATE_LOW;
+    desired_     = STATE_INACTIVE;
+    desired_inv_ = ~STATE_INACTIVE;
 
-    write_raw(false);
+    write_raw(idle);
 
-    ESP_LOGI(TAG, "GPIO%d parked LOW (rtc_hold=%d)", (int)pin_, (int)rtc_hold_);
+    ESP_LOGI(TAG, "GPIO%d parked %s (active_%s, rtc_hold=%d)",
+             (int)pin_, idle ? "HIGH" : "LOW",
+             active_high_ ? "high" : "low", (int)rtc_hold_);
 }
 
 void SafetyOutput::set(bool active) {
-    const uint32_t state = active ? STATE_HIGH : STATE_LOW;
+    const uint32_t state = active ? STATE_ACTIVE : STATE_INACTIVE;
 
     // Update the redundant copies before touching hardware, so that a reset
     // landing mid-call leaves verify() able to see the intended state.
     desired_     = state;
     desired_inv_ = ~state;
 
-    write_raw(active);
+    write_raw(level_for(active));
 }
 
 bool SafetyOutput::is_active() const {
-    return desired_ == STATE_HIGH;
+    return desired_ == STATE_ACTIVE;
 }
 
 bool SafetyOutput::read_pad() const {
@@ -97,19 +108,19 @@ bool SafetyOutput::verify() {
     // must be one of the two sentinels. Anything else means memory was damaged,
     // and the only defensible response is to force the safe state.
     const bool consistent = (state == ~inv) &&
-                            (state == STATE_LOW || state == STATE_HIGH);
+                            (state == STATE_INACTIVE || state == STATE_ACTIVE);
 
     if (!consistent) {
         ++faults_;
-        ESP_LOGE(TAG, "GPIO%d state corrupted (0x%08lX/0x%08lX), forcing LOW",
+        ESP_LOGE(TAG, "GPIO%d state corrupted (0x%08lX/0x%08lX), forcing idle",
                  (int)pin_, (unsigned long)state, (unsigned long)inv);
-        desired_     = STATE_LOW;
-        desired_inv_ = ~STATE_LOW;
-        write_raw(false);
+        desired_     = STATE_INACTIVE;
+        desired_inv_ = ~STATE_INACTIVE;
+        write_raw(level_for(false));
         return true;
     }
 
-    const bool want = (state == STATE_HIGH);
+    const bool want = level_for(state == STATE_ACTIVE);
     const bool got  = read_pad();
 
     // Unconditionally rewrite the register. If some other code reconfigured the
