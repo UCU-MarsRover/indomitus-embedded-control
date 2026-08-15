@@ -3,7 +3,10 @@
 #include "pins.hpp"
 
 extern "C" {
+#include "driver/gpio.h"
 #include "driver/uart.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 }
 
 #include "esp_log.h"
@@ -18,6 +21,85 @@ constexpr uint8_t SYNC1 = 0x55;
 
 constexpr int RX_BUF_SIZE = 512;
 constexpr int TX_BUF_SIZE = 512;
+
+// --- E32 mode/config -----------------------------------------------------
+/// The E32's config mode runs its UART at a FIXED 9600 8N1, whatever baud the
+/// module is configured to use in transparent mode. Config traffic must
+/// therefore be sent at 9600 and the baud restored afterwards.
+constexpr uint32_t E32_CONFIG_BAUD = 9600;
+/// Write parameters and save them across power cycles (0xC2 = don't save).
+constexpr uint8_t E32_CMD_WRITE = 0xC0;
+/// Read back the current parameters (sent three times).
+constexpr uint8_t E32_CMD_READ = 0xC1;
+/// Settling time after an M0/M1 change. The datasheet says to wait for AUX to
+/// go high; AUX is not wired on this board, so use a generous fixed delay.
+constexpr uint32_t MODE_SETTLE_MS = 100;
+/// Time the module needs to commit parameters to its internal flash.
+constexpr uint32_t CONFIG_WRITE_MS = 500;
+
+/// Drive the mode-select pins. M0=M1=0 is transparent, M0=M1=1 is sleep/config.
+void set_mode(bool m0, bool m1) {
+    gpio_set_level(Pins::RADIO_M0, m0 ? 1 : 0);
+    gpio_set_level(Pins::RADIO_M1, m1 ? 1 : 0);
+    vTaskDelay(pdMS_TO_TICKS(MODE_SETTLE_MS));
+}
+
+/**
+ * @brief Write channel/baud/power parameters into the module, then verify.
+ *
+ * Leaves the module back in transparent mode at @p normal_baud. Costs roughly
+ * a second of boot time, which is spent once and buys certainty that both
+ * radios are on the same channel --- a mismatch there is silent and looks
+ * exactly like a wiring fault.
+ *
+ * @return true if the read-back matched what was written.
+ */
+bool configure_module(uint32_t normal_baud) {
+    const uart_port_t port = (uart_port_t)Pins::RADIO_UART_NUM;
+
+    set_mode(true, true);  // sleep/config
+    uart_set_baudrate(port, E32_CONFIG_BAUD);
+    uart_flush_input(port);
+
+    const uint8_t cmd[6] = {E32_CMD_WRITE, 0x00, 0x00,
+                            Pins::RADIO_SPED, Pins::RADIO_CHANNEL,
+                            Pins::RADIO_OPTION};
+    uart_write_bytes(port, (const char*)cmd, sizeof(cmd));
+    uart_wait_tx_done(port, pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_WRITE_MS));
+
+    // Read the parameters back rather than trusting the write: a module stuck
+    // in the wrong mode accepts the bytes and silently does nothing.
+    uart_flush_input(port);
+    const uint8_t rd[3] = {E32_CMD_READ, E32_CMD_READ, E32_CMD_READ};
+    uart_write_bytes(port, (const char*)rd, sizeof(rd));
+    uart_wait_tx_done(port, pdMS_TO_TICKS(200));
+
+    uint8_t resp[6] = {0};
+    const int n = uart_read_bytes(port, resp, sizeof(resp), pdMS_TO_TICKS(500));
+
+    bool ok = false;
+    if (n == (int)sizeof(resp)) {
+        ESP_LOGI(TAG, "E32 params: %02X %02X %02X SPED=%02X CHAN=%02X OPT=%02X",
+                 resp[0], resp[1], resp[2], resp[3], resp[4], resp[5]);
+        ok = (resp[3] == Pins::RADIO_SPED) &&
+             (resp[4] == Pins::RADIO_CHANNEL) &&
+             (resp[5] == Pins::RADIO_OPTION);
+        if (!ok) {
+            ESP_LOGE(TAG, "E32 params NOT applied (wanted SPED=%02X CHAN=%02X "
+                          "OPT=%02X)",
+                     Pins::RADIO_SPED, Pins::RADIO_CHANNEL, Pins::RADIO_OPTION);
+        }
+    } else {
+        ESP_LOGE(TAG, "E32 did not answer in config mode (%d bytes) --- check "
+                      "M0/M1 wiring, module power, and TX/RX orientation", n);
+    }
+
+    set_mode(false, false);  // back to transparent
+    uart_set_baudrate(port, normal_baud);
+    uart_flush_input(port);
+    return ok;
+}
 
 /// Incremental parser state. Kept across receive() calls so a frame split
 /// across several reads is reassembled rather than lost.
@@ -170,12 +252,25 @@ void init(uint32_t baud) {
     ESP_ERROR_CHECK(uart_set_pin(port, Pins::RADIO_TX, Pins::RADIO_RX,
                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
+    // Mode pins as driven outputs. The internal pulldown stays on so the pads
+    // are biased low during the high-impedance window before this runs; the
+    // external 10k pulldowns are still what actually cover that window.
+    gpio_config_t mode_cfg = {};
+    mode_cfg.pin_bit_mask = (1ULL << Pins::RADIO_M0) | (1ULL << Pins::RADIO_M1);
+    mode_cfg.mode         = GPIO_MODE_OUTPUT;
+    mode_cfg.pull_up_en   = GPIO_PULLUP_DISABLE;
+    mode_cfg.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    mode_cfg.intr_type    = GPIO_INTR_DISABLE;
+    ESP_ERROR_CHECK(gpio_config(&mode_cfg));
+
+    configure_module(baud);
+
     g_state        = RxState::WAIT_SYNC0;
     g_initialised  = true;
 
-    ESP_LOGI(TAG, "UART%d up @%lu tx=GPIO%d rx=GPIO%d",
+    ESP_LOGI(TAG, "UART%d up @%lu tx=GPIO%d rx=GPIO%d ch=0x%02X",
              Pins::RADIO_UART_NUM, (unsigned long)baud,
-             (int)Pins::RADIO_TX, (int)Pins::RADIO_RX);
+             (int)Pins::RADIO_TX, (int)Pins::RADIO_RX, Pins::RADIO_CHANNEL);
 }
 
 bool send(const uint8_t* payload, uint8_t len) {

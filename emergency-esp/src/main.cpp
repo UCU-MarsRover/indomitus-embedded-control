@@ -12,15 +12,19 @@
  *
  * Radio e-stop policy (see RadioProto below and README.md "Radio protocol"):
  *
- *   - Ground station sends a single 0x01 heartbeat byte every 2 s.
- *   - The rover is stopped (PowerCut::engage()) whenever any of these is true,
+ *   - Ground station sends a single 0x00 byte to stop, 0x01 to release.
+ *   - The rover is stopped (PowerCut::engage()) whenever either is true,
  *     re-evaluated every loop iteration:
- *       - no valid heartbeat for RadioProto::HEARTBEAT_TIMEOUT_MS
  *       - the last radio command byte received was 0x00 (stop)
  *       - the local e-stop button is currently held down
- *   - Not latched: as soon as none of those are true --- heartbeats resumed,
- *     a heartbeat byte arrived after a stop byte, and the local button is
- *     released --- power is restored automatically. No separate rearm step.
+ *   - Not latched: the moment both clear --- a 0x01 arrives after a 0x00, and
+ *     the local button is released --- power is restored automatically.
+ *
+ * Sync handshake: any received frame that isn't exactly one byte of 0x00 or
+ * 0x01 is treated as a plain-text sync/test message and echoed straight back
+ * (see the ground station's e32-e-stop-gs project, which sends
+ * "hello from ground station" on repeat until it sees its own message
+ * echoed back). Purely a link-check; it has no effect on the stop condition.
  *
  * CAN protocol is still unimplemented (TODO below) --- out of scope for the
  * radio e-stop feature this file currently wires up.
@@ -46,20 +50,12 @@ static constexpr uint32_t CAN_HEALTH_INTERVAL_MS = 250;
 
 /// Payload bytes the ground station is expected to send over RadioLink.
 namespace RadioProto {
-constexpr uint8_t HEARTBEAT = 0x01;
-constexpr uint8_t STOP      = 0x00;
-
-/// No heartbeat this long (from boot, or from the last one seen) stops the
-/// rover. Matches the spec: >4 s of silence stops the rover.
-constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 4000;
+constexpr uint8_t STOP = 0x00;
+constexpr uint8_t RUN  = 0x01;
 }  // namespace RadioProto
 
-/// Last time a valid 0x01 heartbeat frame was seen. Seeded at boot so the
-/// rover requires a live link within HEARTBEAT_TIMEOUT_MS of power-up, not
-/// just after the first frame ever arrives.
-static uint32_t g_last_heartbeat_ms = 0;
-/// True from the moment a 0x00 stop frame arrives until the next 0x01
-/// heartbeat frame clears it. Not a latch --- a resumed heartbeat is enough.
+/// True from the moment a 0x00 stop frame arrives until a 0x01 run frame
+/// clears it. Not a latch --- the next 0x01 is enough, no rearm step.
 static bool g_radio_stop = false;
 /// Tracks the previous loop's combined stop state, purely so transitions can
 /// be logged once instead of every single iteration.
@@ -78,8 +74,6 @@ void setup() {
     EstopButton::init();
     can_init();
     RadioLink::init();
-
-    g_last_heartbeat_ms = millis();
 
     ESP_LOGI(TAG, "emergency node ready");
 }
@@ -105,25 +99,27 @@ void loop() {
     while (RadioLink::receive(frame)) {
         if (frame.len == 1 && frame.data[0] == RadioProto::STOP) {
             g_radio_stop = true;
-        } else if (frame.len == 1 && frame.data[0] == RadioProto::HEARTBEAT) {
-            g_last_heartbeat_ms = now;
-            g_radio_stop        = false;
+        } else if (frame.len == 1 && frame.data[0] == RadioProto::RUN) {
+            g_radio_stop = false;
+        } else {
+            // Not a control byte: treat it as a sync/test message and echo it
+            // straight back, e.g. the ground station's boot-time
+            // "hello from ground station" handshake.
+            ESP_LOGI(TAG, "radio: echoing %u-byte message: %.*s",
+                     (unsigned)frame.len, (int)frame.len,
+                     (const char*)frame.data);
+            RadioLink::send(frame.data, frame.len);
         }
-        // Anything else is an unrecognised payload and is silently ignored.
     }
 
     // ---- Combined stop condition ---------------------------------------------
     // Re-evaluated fresh every iteration: nothing here latches, so power is
-    // restored automatically the moment every condition below clears.
-    const bool radio_timeout =
-        (now - g_last_heartbeat_ms) >= RadioProto::HEARTBEAT_TIMEOUT_MS;
-    const bool should_stop =
-        EstopButton::is_pressed() || g_radio_stop || radio_timeout;
+    // restored automatically the moment both conditions below clear.
+    const bool should_stop = EstopButton::is_pressed() || g_radio_stop;
 
     if (should_stop && !g_was_stopped) {
-        const char* reason = EstopButton::is_pressed() ? "local button"
-                            : g_radio_stop              ? "radio stop command"
-                                                         : "radio heartbeat timeout";
+        const char* reason =
+            EstopButton::is_pressed() ? "local button" : "radio stop command";
         ESP_LOGW(TAG, "E-STOP engaged: %s", reason);
     } else if (!should_stop && g_was_stopped) {
         ESP_LOGI(TAG, "E-STOP cleared, power restored");

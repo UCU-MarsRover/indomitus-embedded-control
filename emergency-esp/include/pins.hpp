@@ -92,10 +92,30 @@ constexpr uint32_t RADIO_BAUD = 115200;
 /// Radio mode-select pins. M0=M1=0 is normal transparent mode.
 ///
 /// These must never float: the module's internal pull-ups would read 1,1 =
-/// sleep/config mode and the radio would sit silent. Give each a 10k pulldown
-/// so the module comes up transparent before the ESP configures anything.
+/// sleep/config mode and the radio would sit silent. RadioLink::init() drives
+/// both as outputs, so the firmware no longer depends on external pulldowns --
+/// but a 10k pulldown on each is still worth fitting, because the pads are
+/// high-impedance inputs from power-on until init() runs.
 constexpr gpio_num_t RADIO_M0 = GPIO_NUM_6;
 constexpr gpio_num_t RADIO_M1 = GPIO_NUM_7;
+
+// --- E32 module configuration --------------------------------------------
+// Written into the module by RadioLink::init() at every boot. ALL THREE bytes
+// must be identical to the ground station's (e32-e-stop-gs) or the two radios
+// will not hear each other.
+
+/// RF channel. Carrier is 410 + CHAN MHz, so 0x17 = 433 MHz (factory default).
+constexpr uint8_t RADIO_CHANNEL = 0x17;
+
+/// SPED: 8N1 parity (00) | UART 115200 (111) | air data rate 2.4k (010).
+/// The air rate is the one that sets range; 2.4k is the factory default and a
+/// good compromise. It is unrelated to RADIO_BAUD, which is only the wired
+/// ESP<->module link.
+constexpr uint8_t RADIO_SPED = 0x3A;
+
+/// OPTION: transparent transmission (bit7=0) | push-pull IO (bit6=1) |
+/// 250 ms wake-up (000) | FEC on (bit2=1) | max TX power (00).
+constexpr uint8_t RADIO_OPTION = 0x44;
 
 // --- Jetson reset --------------------------------------------------------
 /// Resets the Jetson. Wired to SYS_RESET* on the reComputer's REC switch
