@@ -193,7 +193,7 @@
  *  noted otherwise. Angles and spreads are transmitted as fixed-point,
  *  value*10 (i.e. 0.1 degree / 0.1 mm resolution). Loads are plain grams.
  *
- *  COMMAND FRAME   -> ID 0x26 (CAN_ID_CMD), sent by the control panel
+ *  COMMAND FRAME   -> ID 0x01A (CAN_ID_CMD), sent by the control panel
  *    byte0        = command id (see table)
  *    byte1..2     = int16 parameter, LE (only for commands that need one)
  *    (unused bytes may be omitted / zero)
@@ -211,8 +211,8 @@
  *      9         READ_SPREAD             none                     1
  *     10         READ_GRIPPER_INFO       none                     1
  *
- *  RESPONSE FRAMES, all sent by the gripper on ID 0x27 (CAN_ID_ACK) —
- *  only two CAN IDs are used in total (0x26 in, 0x27 out). Since the
+ *  RESPONSE FRAMES, all sent by the gripper on ID 0x01B (CAN_ID_ACK) —
+ *  only two CAN IDs are used in total (0x01A in, 0x01B out). Since the
  *  protocol is strictly request/response (one command, one reply), the
  *  requester knows which layout to expect from the command it just sent:
  *
@@ -409,8 +409,8 @@ const float ANGLE_AT_ZERO_SPREAD  = (float)SERVO_MIN_ANGLE; // angle at 0 mm spr
 const unsigned long SERIAL_BAUD              = 115200;
 const unsigned long SERIAL_REPORT_INTERVAL_MS = 100; // faster live stream (10 Hz output)
 
-const uint32_t CAN_ID_CMD = 0x26;
-const uint32_t CAN_ID_ACK = 0x27;
+const uint32_t CAN_ID_CMD = 0x01A;
+const uint32_t CAN_ID_ACK = 0x01B;
 
 enum CmdId : uint8_t {
   CMD_SAFE_SET_SPREAD   = 1,
