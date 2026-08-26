@@ -193,7 +193,7 @@
  *  noted otherwise. Angles and spreads are transmitted as fixed-point,
  *  value*10 (i.e. 0.1 degree / 0.1 mm resolution). Loads are plain grams.
  *
- *  COMMAND FRAME   -> ID 0x100 (CAN_ID_CMD), sent by the control panel
+ *  COMMAND FRAME   -> ID 0x26 (CAN_ID_CMD), sent by the control panel
  *    byte0        = command id (see table)
  *    byte1..2     = int16 parameter, LE (only for commands that need one)
  *    (unused bytes may be omitted / zero)
@@ -211,24 +211,27 @@
  *      9         READ_SPREAD             none                     1
  *     10         READ_GRIPPER_INFO       none                     1
  *
- *  RESPONSE FRAMES, sent by the gripper:
+ *  RESPONSE FRAMES, all sent by the gripper on ID 0x27 (CAN_ID_ACK) —
+ *  only two CAN IDs are used in total (0x26 in, 0x27 out). Since the
+ *  protocol is strictly request/response (one command, one reply), the
+ *  requester knows which layout to expect from the command it just sent:
  *
- *    ID 0x101 (CAN_ID_ACK) — sent after any ACTION command (1-6)
+ *    Reply to an ACTION command (1-6)
  *      byte0 = command id echoed
  *      byte1 = status: 0 = OK, 1 = REJECTED (parameter out of range),
  *                      2 = UNKNOWN COMMAND
  *
- *    ID 0x103 (CAN_ID_LOAD) — reply to READ_LOAD_SENSORS (cmd 7)
+ *    Reply to READ_LOAD_SENSORS (cmd 7)
  *      byte0..1 = right load, grams (int16)
  *      byte2..3 = left  load, grams (int16)
  *
- *    ID 0x104 (CAN_ID_ANGLE) — reply to READ_ANGLE (cmd 8)
+ *    Reply to READ_ANGLE (cmd 8)
  *      byte0..1 = current TARGET angle * 10 (int16, degrees)
  *
- *    ID 0x105 (CAN_ID_SPREAD) — reply to READ_SPREAD (cmd 9)
+ *    Reply to READ_SPREAD (cmd 9)
  *      byte0..1 = current TARGET spread * 10 (int16, mm)
  *
- *    ID 0x102 (CAN_ID_INFO) — reply to READ_GRIPPER_INFO (cmd 10)
+ *    Reply to READ_GRIPPER_INFO (cmd 10)
  *      byte0..1 = right load, grams (int16)
  *      byte2..3 = left  load, grams (int16)
  *      byte4..5 = target angle  * 10 (int16, degrees)
@@ -406,12 +409,8 @@ const float ANGLE_AT_ZERO_SPREAD  = (float)SERVO_MIN_ANGLE; // angle at 0 mm spr
 const unsigned long SERIAL_BAUD              = 115200;
 const unsigned long SERIAL_REPORT_INTERVAL_MS = 100; // faster live stream (10 Hz output)
 
-const uint32_t CAN_ID_CMD    = 0x100;
-const uint32_t CAN_ID_ACK    = 0x101;
-const uint32_t CAN_ID_INFO   = 0x102;
-const uint32_t CAN_ID_LOAD   = 0x103;
-const uint32_t CAN_ID_ANGLE  = 0x104;
-const uint32_t CAN_ID_SPREAD = 0x105;
+const uint32_t CAN_ID_CMD = 0x26;
+const uint32_t CAN_ID_ACK = 0x27;
 
 enum CmdId : uint8_t {
   CMD_SAFE_SET_SPREAD   = 1,
@@ -709,21 +708,21 @@ void canSendLoad() {
   uint8_t d[4];
   memcpy(&d[0], &r, 2);
   memcpy(&d[2], &l, 2);
-  canSend(CAN_ID_LOAD, d, 4);
+  canSend(CAN_ID_ACK, d, 4);
 }
 
 void canSendAngle() {
   int16_t a = (int16_t)lroundf(targetAngle * 10.0f);
   uint8_t d[2];
   memcpy(&d[0], &a, 2);
-  canSend(CAN_ID_ANGLE, d, 2);
+  canSend(CAN_ID_ACK, d, 2);
 }
 
 void canSendSpread() {
   int16_t s = (int16_t)lroundf(angleToSpread(targetAngle) * 10.0f);
   uint8_t d[2];
   memcpy(&d[0], &s, 2);
-  canSend(CAN_ID_SPREAD, d, 2);
+  canSend(CAN_ID_ACK, d, 2);
 }
 
 void canSendInfo() {
@@ -736,7 +735,7 @@ void canSendInfo() {
   memcpy(&d[2], &l, 2);
   memcpy(&d[4], &a, 2);
   memcpy(&d[6], &s, 2);
-  canSend(CAN_ID_INFO, d, 8);
+  canSend(CAN_ID_ACK, d, 8);
 }
 
 void handleCanCommand(const twai_message_t &msg) {
