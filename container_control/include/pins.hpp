@@ -4,8 +4,8 @@
 // ESP32-C3 Super Mini pin map for the active two HX711 load cells.
 
 // CAN (TWAI) - kept for library functionality, not initialized in main()
-static constexpr gpio_num_t PIN_CAN_TX = GPIO_NUM_7;
-static constexpr gpio_num_t PIN_CAN_RX = GPIO_NUM_10;
+static constexpr gpio_num_t PIN_CAN_TX = GPIO_NUM_10;
+static constexpr gpio_num_t PIN_CAN_RX = GPIO_NUM_7;
 
 // I2C bus for IMU
 static constexpr gpio_num_t PIN_I2C_SCL = GPIO_NUM_4;

@@ -1,8 +1,11 @@
 #include "can_manager.hpp"
+#include "weight_sensor.hpp"
 #include <cstring>
 #ifdef DEBUG_ENABLED
 #include <Arduino.h>
 #endif
+
+extern SemaphoreHandle_t weight_mutex;
 
 using namespace CanProtocol;
 
@@ -39,8 +42,8 @@ static void send_weight(float left, float right) {
 
 static void handle_get_weight() {
     send_weight(
-        g_state.weight1.load(),
-        g_state.weight2.load()
+        g_state.weight1_g.load(),
+        g_state.weight2_g.load()
     );
 }
 
@@ -54,6 +57,21 @@ static void handle_command(const CanMsg& msg) {
         case CMD_GET_WEIGHT:
             handle_get_weight();
             break;
+
+        case CMD_TARE_LEFT:
+            if (weight_mutex != nullptr && xSemaphoreTake(weight_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                sensor1.tare();
+                xSemaphoreGive(weight_mutex);
+            }
+            break;
+
+        case CMD_TARE_RIGHT:
+            if (weight_mutex != nullptr && xSemaphoreTake(weight_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                sensor2.tare();
+                xSemaphoreGive(weight_mutex);
+            }
+            break;
+
         default:
 #ifdef DEBUG_ENABLED
             Serial.print("[CAN] unknown cmd=0x"); Serial.println(msg.data[0], HEX);

@@ -106,12 +106,16 @@ static void print_weight_status() {
     float right = g_state.weight2_g.load();
     bool left_ok = !g_state.weight1_error.load();
     bool right_ok = !g_state.weight2_error.load();
+    float roll = g_state.roll.load();
+    float pitch = g_state.pitch.load();
 
-    Serial.printf("[STATUS] LEFT = %.1f g  %s | RIGHT = %.1f g  %s\n",
+    Serial.printf("[STATUS] LEFT = %.1f g  %s | RIGHT = %.1f g  %s | ROLL = %.1f deg | PITCH = %.1f deg\n",
                   left_ok ? left : -9999.0f,
                   left_ok ? "OK" : "ERR",
                   right_ok ? right : -9999.0f,
-                  right_ok ? "OK" : "ERR");
+                  right_ok ? "OK" : "ERR",
+                  roll,
+                  pitch);
 }
 
 static void print_serial_help() {
@@ -257,8 +261,8 @@ void setup() {
     weight_sensors_init();
 
     // Default calibration values for both sensors; manual recalibration remains possible.
-    sensor1.set_calibration(0, 298.3729f);
-    sensor2.set_calibration(0, 298.3729f);
+    sensor1.set_calibration(0, 399.3700f);
+    sensor2.set_calibration(0, 410.5763f);
 
 #ifndef DEBUG_ENABLED
     Serial.println("[RELEASE] Calibration-only mode active. Use TR/TL/ZR/ZL/CR/CL or STATUS");
@@ -294,6 +298,10 @@ void setup() {
     delay(1000);
     display.clear();
     Serial.println("[DEBUG] Display test complete - ready for Yaw/Pitch output");
+
+    // Initialize CAN bus and task before starting the runtime tasks.
+    can_init_1mbs_accept_all();
+    xTaskCreatePinnedToCore(can_task, "can_task", 3072, nullptr, 2, nullptr, 0);
 
     // Create tasks with distinct priorities: imu (high), display (medium), weight (low)
     xTaskCreatePinnedToCore(imu_task, "imu_task", 4096, &g_state, 3, nullptr, 0);

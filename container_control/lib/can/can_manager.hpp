@@ -8,6 +8,8 @@ namespace CanProtocol {
     constexpr uint32_t RIGHT_WEIGHT_RESP_ID = 0x203;
 
     constexpr uint8_t CMD_GET_WEIGHT = 0x10;
+    constexpr uint8_t CMD_TARE_LEFT  = 0x11;
+    constexpr uint8_t CMD_TARE_RIGHT = 0x12;
 }
 
 static void log_can_rx(const CanMsg& msg);
