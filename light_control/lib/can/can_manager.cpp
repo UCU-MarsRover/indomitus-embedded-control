@@ -15,13 +15,17 @@ static void send_response(uint8_t cmd, uint8_t status) {
     const uint8_t payload[2] = {cmd, status};
     const esp_err_t err = can_send(Can::RESP_ID, payload, 2);
 
+#ifdef DEBUG_ENABLED
     ESP_LOGD(TAG, "TX cmd=0x%02X status=0x%02X result=%s",
              cmd, status, err == ESP_OK ? "OK" : "FAIL");
+#endif
 }
 
 static void handle_command(const CanMsg& msg) {
     if (msg.id != Can::CMD_ID || msg.len < 1) {
+#ifdef DEBUG_ENABLED
         ESP_LOGW(TAG, "Ignored msg id=0x%03lX len=%d", msg.id, msg.len);
+#endif
         return;
     }
 
@@ -47,6 +51,22 @@ static void handle_command(const CanMsg& msg) {
             lc = {LightCmd::SPOTLIGHT_OFF, 0};
             send_response(Can::CMD_SPOTLIGHT_OFF, Can::STATUS_OK);
             break;
+        case Can::CMD_SPOTLIGHT_LEFT_ON:
+            lc = {LightCmd::SPOTLIGHT_LEFT_ON, 0};
+            send_response(Can::CMD_SPOTLIGHT_LEFT_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_SPOTLIGHT_LEFT_OFF:
+            lc = {LightCmd::SPOTLIGHT_LEFT_OFF, 0};
+            send_response(Can::CMD_SPOTLIGHT_LEFT_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_SPOTLIGHT_RIGHT_ON:
+            lc = {LightCmd::SPOTLIGHT_RIGHT_ON, 0};
+            send_response(Can::CMD_SPOTLIGHT_RIGHT_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_SPOTLIGHT_RIGHT_OFF:
+            lc = {LightCmd::SPOTLIGHT_RIGHT_OFF, 0};
+            send_response(Can::CMD_SPOTLIGHT_RIGHT_OFF, Can::STATUS_OK);
+            break;
         case Can::CMD_BEAUTIFUL_LIGHT_ON:
             lc = {LightCmd::BEAUTIFUL_ON, 0};
             send_response(Can::CMD_BEAUTIFUL_LIGHT_ON, Can::STATUS_OK);
@@ -54,6 +74,78 @@ static void handle_command(const CanMsg& msg) {
         case Can::CMD_BEAUTIFUL_LIGHT_OFF:
             lc = {LightCmd::BEAUTIFUL_OFF, 0};
             send_response(Can::CMD_BEAUTIFUL_LIGHT_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_1_ON:
+            lc = {LightCmd::BEAUTIFUL_1_ON, 0};
+            send_response(Can::CMD_BEAUTIFUL_1_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_1_OFF:
+            lc = {LightCmd::BEAUTIFUL_1_OFF, 0};
+            send_response(Can::CMD_BEAUTIFUL_1_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_2_ON:
+            lc = {LightCmd::BEAUTIFUL_2_ON, 0};
+            send_response(Can::CMD_BEAUTIFUL_2_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_2_OFF:
+            lc = {LightCmd::BEAUTIFUL_2_OFF, 0};
+            send_response(Can::CMD_BEAUTIFUL_2_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_3_ON:
+            lc = {LightCmd::BEAUTIFUL_3_ON, 0};
+            send_response(Can::CMD_BEAUTIFUL_3_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_3_OFF:
+            lc = {LightCmd::BEAUTIFUL_3_OFF, 0};
+            send_response(Can::CMD_BEAUTIFUL_3_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_4_ON:
+            lc = {LightCmd::BEAUTIFUL_4_ON, 0};
+            send_response(Can::CMD_BEAUTIFUL_4_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_BEAUTIFUL_4_OFF:
+            lc = {LightCmd::BEAUTIFUL_4_OFF, 0};
+            send_response(Can::CMD_BEAUTIFUL_4_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_RED_LIGHT_ON:
+            lc = {LightCmd::RED_ON, 0};
+            send_response(Can::CMD_RED_LIGHT_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_RED_LIGHT_OFF:
+            lc = {LightCmd::RED_OFF, 0};
+            send_response(Can::CMD_RED_LIGHT_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_GREEN_LIGHT_ON:
+            lc = {LightCmd::GREEN_ON, 0};
+            send_response(Can::CMD_GREEN_LIGHT_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_GREEN_LIGHT_OFF:
+            lc = {LightCmd::GREEN_OFF, 0};
+            send_response(Can::CMD_GREEN_LIGHT_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_BLUE_LIGHT_ON:
+            lc = {LightCmd::BLUE_ON, 0};
+            send_response(Can::CMD_BLUE_LIGHT_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_BLUE_LIGHT_OFF:
+            lc = {LightCmd::BLUE_OFF, 0};
+            send_response(Can::CMD_BLUE_LIGHT_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_BUZZER_ON:
+            lc = {LightCmd::BUZZER_ON, 0};
+            send_response(Can::CMD_BUZZER_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_BUZZER_OFF:
+            lc = {LightCmd::BUZZER_OFF, 0};
+            send_response(Can::CMD_BUZZER_OFF, Can::STATUS_OK);
+            break;
+        case Can::CMD_TOWER_ON:
+            lc = {LightCmd::TOWER_ON, 0};
+            send_response(Can::CMD_TOWER_ON, Can::STATUS_OK);
+            break;
+        case Can::CMD_TOWER_OFF:
+            lc = {LightCmd::TOWER_OFF, 0};
+            send_response(Can::CMD_TOWER_OFF, Can::STATUS_OK);
             break;
         case Can::CMD_TRAFFIC_LIGHT:
             if (msg.len < 2) {
@@ -81,7 +173,9 @@ void can_rx_task(void*) {
     for (;;) {
         CanMsg msg;
         if (can_recv(msg, 2000) == ESP_OK) {
+#ifdef DEBUG_ENABLED
             ESP_LOGD(TAG, "RX id=0x%03lX data[0]=0x%02X", msg.id, msg.data[0]);
+#endif
             handle_command(msg);
         }
     }
@@ -95,7 +189,9 @@ void can_tx_enqueue(uint32_t id, const uint8_t* data, uint8_t len) {
     memcpy(msg.data, data, len);
     
     if (xQueueSend(can_tx_queue, &msg, pdMS_TO_TICKS(10)) != pdTRUE) {
+#ifdef DEBUG_ENABLED
         ESP_LOGW(TAG, "CAN TX queue full, dropped id=0x%03lX", id);
+#endif
     }
 }
 
@@ -117,7 +213,9 @@ void can_tx_task(void*) {
                     continue;
                 } 
                 else if (status_info.state == TWAI_STATE_STOPPED) {
+#ifdef DEBUG_ENABLED
                     ESP_LOGW(TAG, "Re-starting TWAI driver...");
+#endif
                     twai_start();
                     vTaskDelay(pdMS_TO_TICKS(50));
                 }

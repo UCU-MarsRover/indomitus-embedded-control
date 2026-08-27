@@ -45,7 +45,9 @@ void power_sensor_init() {
     Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
     // Write shunt calibration so current register returns meaningful values
     writeRegister16(0x02, SHUNT_CAL_VALUE);
+#ifdef DEBUG_ENABLED
     ESP_LOGD(TAG, "INA228 initialized at 0x%02X", INA228_ADDR);
+#endif
 }
 
 void power_telemetry_task(void*) {
@@ -66,7 +68,9 @@ void power_telemetry_task(void*) {
             uint32_t vbus = rawV >> 4;
             voltage = vbus * BUS_VOLTAGE_LSB;
         } else {
+#ifdef DEBUG_ENABLED
             ESP_LOGW(TAG, "Failed to read bus voltage");
+#endif
         }
 
         uint32_t rawI = readRegister24(0x07);
@@ -75,7 +79,9 @@ void power_telemetry_task(void*) {
             if (raw20 & 0x80000) raw20 -= 0x100000; // sign extend
             current = raw20 * CURRENT_LSB;
         } else {
+#ifdef DEBUG_ENABLED
             ESP_LOGW(TAG, "Failed to read current");
+#endif
         }
 
         uint8_t payload[8];
@@ -86,6 +92,7 @@ void power_telemetry_task(void*) {
         Serial.printf("INA228 voltage=%.4f V current=%.4f A\n", voltage, current);
 
         ESP_LOGD(TAG, "voltage=%.4fV current=%.4fA", voltage, current);
+#endif
 
         vTaskDelayUntil(&last_wake, period);
     }
