@@ -104,8 +104,8 @@
 // =============================================================================
 //  HARDCODED ACTION CONSTANTS (Adjust your default values here)
 // =============================================================================
-const uint32_t CLAW_CLOSE_STEPS = 2000;  // Steps for CLOSE command
-const uint32_t CLAW_OPEN_STEPS  = 2000;  // Steps for OPEN command
+const uint32_t CLAW_CLOSE_STEPS = 3000; //Steps for CLOSE command
+const uint32_t CLAW_OPEN_STEPS  = 3000;  // Steps for OPEN command
 const uint32_t DRILL_DOWN_MS    = 3000;  // Milliseconds for DOWN command
 const uint32_t DRILL_UP_MS      = 3000;  // Milliseconds for UP command
 
