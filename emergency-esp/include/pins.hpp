@@ -104,8 +104,14 @@ constexpr gpio_num_t RADIO_M1 = GPIO_NUM_7;
 // must be identical to the ground station's (e32-e-stop-gs) or the two radios
 // will not hear each other.
 
-/// RF channel. Carrier is 410 + CHAN MHz, so 0x17 = 433 MHz (factory default).
-constexpr uint8_t RADIO_CHANNEL = 0x17;
+/// RF channel. Carrier is 410 + CHAN MHz, so 0x14 = channel 20 = 430 MHz.
+///
+/// NOT the module's factory default (0x17 = 433 MHz). 0x17 is reserved for the
+/// rover's teleoperation LoRa link, which the mast Pi already transmits on
+/// (mast/lora_bridge.py, CFG_CHAN = 0x17) at 1 W. Leaving the emergency link
+/// on the factory channel puts two 1 W transmitters on one carrier with their
+/// receivers side by side, so the safety link is moved one band away instead.
+constexpr uint8_t RADIO_CHANNEL = 0x14;
 
 /// SPED: 8N1 parity (00) | UART 115200 (111) | air data rate 2.4k (010).
 /// The air rate is the one that sets range; 2.4k is the factory default and a
