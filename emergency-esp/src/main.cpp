@@ -19,10 +19,13 @@
  *       - the local e-stop button is currently held down
  *   - Not latched: the moment both clear --- a 0x01 arrives after a 0x00, and
  *     the local button is released --- power is restored automatically.
+ *   - A single 0x02 byte triggers JetsonReset::reset(): a one-shot,
+ *     non-blocking pulse on the Jetson's SYS_RESET* line. Unlike STOP/RUN this
+ *     is edge-triggered, not a held state --- one 0x02 is one reset pulse.
  *
- * Sync handshake: any received frame that isn't exactly one byte of 0x00 or
- * 0x01 is treated as a plain-text sync/test message and echoed straight back
- * (see the ground station's e32-e-stop-gs project, which sends
+ * Sync handshake: any received frame that isn't exactly one byte of 0x00,
+ * 0x01, or 0x02 is treated as a plain-text sync/test message and echoed
+ * straight back (see the ground station's e32-e-stop-gs project, which sends
  * "hello from ground station" on repeat until it sees its own message
  * echoed back). Purely a link-check; it has no effect on the stop condition.
  *
@@ -50,8 +53,9 @@ static constexpr uint32_t CAN_HEALTH_INTERVAL_MS = 250;
 
 /// Payload bytes the ground station is expected to send over RadioLink.
 namespace RadioProto {
-constexpr uint8_t STOP = 0x00;
-constexpr uint8_t RUN  = 0x01;
+constexpr uint8_t STOP          = 0x00;
+constexpr uint8_t RUN           = 0x01;
+constexpr uint8_t REBOOT_JETSON = 0x02;
 }  // namespace RadioProto
 
 /// True from the moment a 0x00 stop frame arrives until a 0x01 run frame
@@ -101,6 +105,10 @@ void loop() {
             g_radio_stop = true;
         } else if (frame.len == 1 && frame.data[0] == RadioProto::RUN) {
             g_radio_stop = false;
+        } else if (frame.len == 1 && frame.data[0] == RadioProto::REBOOT_JETSON) {
+            if (!JetsonReset::reset()) {
+                ESP_LOGW(TAG, "radio: reboot jetson ignored, pulse already in progress");
+            }
         } else {
             // Not a control byte: treat it as a sync/test message and echo it
             // straight back, e.g. the ground station's boot-time
