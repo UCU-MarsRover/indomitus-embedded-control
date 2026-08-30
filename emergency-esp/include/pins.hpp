@@ -22,11 +22,9 @@
  * That leaves GPIO 0, 1, 3, 4, 5, 6, 7, 10, 20, 21 --- enough for all seven
  * signals with room to spare.
  *
- * The two transistor-gate lines (POWER_CUT, JETSON_CAN_CUT) are placed on
- * GPIO4 and GPIO5 because those are RTC-capable pads: they can be latched with
- * gpio_hold_en() so the level survives sleep and any peripheral reconfiguration
- * elsewhere in the firmware. Losing MTMS/MTDI (external JTAG) costs nothing
- * here since the C3 debugs over its built-in USB-Serial-JTAG.
+ * The three command lines (GPIO2/3/4) are MOMENTARY PULSES, not held levels:
+ * the power system latches its own state, so this node emulates button presses
+ * rather than holding a cut line.
  *
  * The radio is put on GPIO0/GPIO1 driven by UART1. GPIO0/1 are the 32 kHz
  * crystal pads, which the C3-MINI-1 leaves unpopulated, so they are ordinary
@@ -44,10 +42,10 @@
  * ---------------------------------------------------------------------------
  *   GPIO 0   RADIO_RX        <-- radio TX
  *   GPIO 1   RADIO_TX        --> radio RX
- *   GPIO 2   JETSON_RESET    --> opto LED, ACTIVE LOW  [needs 10k pullup]
- *   GPIO 3   ESTOP_BUTTON    <-- button (active high)
- *   GPIO 4   JETSON_CAN_CUT  --> transistor gate  [needs 10k pulldown]
- *   GPIO 5   POWER_CUT       --> transistor gate  [needs 10k pulldown]
+ *   GPIO 2   JETSON_RESET    --> pulse HIGH 1s   [NO external pulldown!]
+ *   GPIO 3   POWER_ON        --> pulse HIGH 1s
+ *   GPIO 4   POWER_OFF       --> pulse LOW 1s    (idles HIGH)
+ *   GPIO 5   ESTOP_BUTTON    <-- button (active high)
  *   GPIO 6   RADIO_M0        --> radio mode select [needs 10k pulldown]
  *   GPIO 7   RADIO_M1        --> radio mode select [needs 10k pulldown]
  *   GPIO 10  CAN_RX          <-- transceiver RXD
@@ -59,24 +57,36 @@ namespace Pins {
 // --- E-stop button -------------------------------------------------------
 /// Button drives +3V3 when pressed. Idle is held at 0 by the internal
 /// pulldown, so a disconnected or broken button reads as "not pressed".
-constexpr gpio_num_t ESTOP_BUTTON = GPIO_NUM_3;
+///
+/// NOT GPIO3 --- that pad is the POWER_ON output. GPIO5 is the pad freed by
+/// the old held-level POWER_CUT line: no strapping function, RTC-capable, so
+/// it is a clean input.
+///
+/// @note If the button is wired to a different pad on your board, change this
+///       one constant. Nothing else depends on the number.
+constexpr gpio_num_t ESTOP_BUTTON = GPIO_NUM_5;
 
 // --- CAN transceiver (TWAI) ----------------------------------------------
 constexpr gpio_num_t CAN_TX = GPIO_NUM_20;
 constexpr gpio_num_t CAN_RX = GPIO_NUM_10;
 
-// --- Critical transistor-gate outputs ------------------------------------
-/// Rover main power cut. HIGH closes the transistor and kills the entire rover
-/// supply, so LOW is the normal running state.
-///
-/// REQUIRES a 10k external pulldown to GND at the gate --- see SafetyOutput for
-/// why firmware alone cannot hold this line low across reset and brownout.
-constexpr gpio_num_t POWER_CUT = GPIO_NUM_5;
+// --- Rover power command lines -------------------------------------------
+// Two MOMENTARY lines, not one held cut line. The power system latches its own
+// state, so the ESP presses buttons: one pulse to switch on, one to switch off.
+// Between pulses the ESP has no influence on rover power at all.
+//
+// Polarities below are the ones verified on the physical board by
+// main_test_hw_commands.cpp. Note that the two lines are opposite senses.
+//
+// Consequence worth stating: a dead or unpowered emergency ESP leaves the
+// rover in whatever state it was last commanded into. Losing this board will
+// not stop the rover --- and equally cannot spuriously stop it.
 
-/// Cuts the Jetson off the CAN bus. HIGH = Jetson isolated, LOW = connected.
-///
-/// REQUIRES a 10k external pulldown to GND at the gate.
-constexpr gpio_num_t JETSON_CAN_CUT = GPIO_NUM_4;
+/// Switches the rover ON. Idles LOW, pulses HIGH.
+constexpr gpio_num_t POWER_ON = GPIO_NUM_3;
+
+/// Switches the rover OFF. Idles HIGH, pulses LOW.
+constexpr gpio_num_t POWER_OFF = GPIO_NUM_4;
 
 // --- Radio adapter (UART1) -----------------------------------------------
 /// ESP RX, wired to the radio module's TX.
@@ -124,33 +134,14 @@ constexpr uint8_t RADIO_SPED = 0x3A;
 constexpr uint8_t RADIO_OPTION = 0x44;
 
 // --- Jetson reset --------------------------------------------------------
-/// Resets the Jetson. Wired to SYS_RESET* on the reComputer's REC switch
-/// header (pin 8, with pin 7 as its GND).
+/// Resets the Jetson. Idles LOW, pulses HIGH --- the polarity verified on the
+/// board by main_test_hw_commands.cpp.
 ///
-/// ACTIVE LOW, unlike the two cut lines. Two facts force that:
-///
-///  1. SYS_RESET* is a 1.8V open-drain input, asserted by pulling it to GND.
-///     3V3 from an ESP pin can damage it, so the ESP must never drive it
-///     directly --- there has to be a stage in between.
-///  2. GPIO2 is an ESP32-C3 strapping pin and must read HIGH at reset. A 10k
-///     pulldown, which a directly-driven MOSFET gate would need, holds it low
-///     and stops the ESP booting.
-///
-/// Both are satisfied by an optocoupler the ESP *sinks*, which inverts the
-/// sense and isolates the two voltage domains:
-///
-///     3V3 --[330R]--|>|-- GPIO2      (opto LED, cathode to the ESP)
-///     GPIO2 --[10k]-- 3V3            (holds the strap high at reset)
-///     opto collector -> header pin 8 (SYS_RESET*)
-///     opto emitter   -> header pin 11/7 (header GND)
-///
-/// GPIO2 HIGH  = LED dark   = idle, Jetson running.
-/// GPIO2 LOW   = ESP sinks the LED = SYS_RESET* pulled down = Jetson resets.
-///
-/// @warning A fault that holds GPIO2 low across an ESP reset puts the ESP into
-///          serial-download mode instead of running the firmware. That is the
-///          cost of using the last strapping pin; it is recoverable by
-///          clearing the fault and power-cycling.
+/// @warning GPIO2 is an ESP32-C3 strapping pin: it must read HIGH during the
+///          ROM boot window. The firmware only drives this pad after setup()
+///          runs, so it is safe --- but do NOT fit an external pulldown here,
+///          which would hold the strap low and stop the ESP booting. If the
+///          driver circuit needs a pulldown, move this signal to another GPIO.
 constexpr gpio_num_t JETSON_RESET = GPIO_NUM_2;
 
 }  // namespace Pins

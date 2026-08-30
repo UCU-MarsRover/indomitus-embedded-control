@@ -12,10 +12,10 @@ itself is application code.
 |------|------------------|-----------|-------------------------------------------|
 | 0    | `RADIO_RX`       | in        | UART1, to radio TX                        |
 | 1    | `RADIO_TX`       | out       | UART1, to radio RX                        |
-| 2    | `JETSON_RESET`   | out       | Opto LED, **active LOW**. **10k PU to 3V3** |
-| 3    | `ESTOP_BUTTON`   | in        | Active high, internal pulldown            |
-| 4    | `JETSON_CAN_CUT` | out       | Gate. HIGH = Jetson isolated. **10k PD**  |
-| 5    | `POWER_CUT`      | out       | Gate. HIGH = rover dead. **10k PD**       |
+| 2    | `JETSON_RESET`   | out       | Pulse HIGH 1s. **No external pulldown**   |
+| 3    | `POWER_ON`       | out       | Pulse HIGH 1s                             |
+| 4    | `POWER_OFF`      | out       | Idles HIGH, pulses LOW 1s                 |
+| 5    | `ESTOP_BUTTON`   | in        | Active high, internal pulldown            |
 | 6    | `RADIO_M0`       | out       | Radio mode select. **10k PD**             |
 | 7    | `RADIO_M1`       | out       | Radio mode select. **10k PD**             |
 | 10   | `CAN_RX`         | in        | TWAI, to transceiver RXD                  |
