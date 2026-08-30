@@ -17,7 +17,7 @@ void can_init() {
     g.intr_flags = ESP_INTR_FLAG_LEVEL1;
 
     const twai_timing_config_t t = {
-        .brp            = 4,      // baudrate prescaler
+        .brp            = 8,      // baudrate prescaler -> 500 kbit/s (APB 80MHz / 8 / 20 tq)
         .tseg_1         = 14,     // prop_seg + phase_seg1
         .tseg_2         = 5,      // phase_seg2
         .sjw            = 3,

@@ -68,7 +68,7 @@ void power_telemetry_task(void*) {
             uint32_t vbus = rawV >> 4;
             voltage = vbus * BUS_VOLTAGE_LSB;
         } else {
-#ifdef DEBUG_ENABLED
+#ifdef DEBUG_ENABLED\
             ESP_LOGW(TAG, "Failed to read bus voltage");
 #endif
         }

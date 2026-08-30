@@ -21,6 +21,6 @@ namespace Pins {
     constexpr gpio_num_t BLUE = GPIO_NUM_41;
     constexpr gpio_num_t BUZZER = GPIO_NUM_40;
 
-    constexpr gpio_num_t I2C_SDA = GPIO_NUM_8;
-    constexpr gpio_num_t I2C_SCL = GPIO_NUM_9;
+    constexpr gpio_num_t I2C_SDA = GPIO_NUM_18;
+    constexpr gpio_num_t I2C_SCL = GPIO_NUM_17;
 }
