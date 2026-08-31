@@ -25,10 +25,10 @@ void can_init() {
     // 500 kbit/s (80 MHz APB / (brp 8 * (1 + tseg_1 15 + tseg_2 4)) = 500 kHz).
     const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();
 
-    // Accept everything; the application decides which IDs matter.
+    // Accept standard IDs 0x330-0x33F.
     const twai_filter_config_t f = {
-        .acceptance_code = 0,
-        .acceptance_mask = 0xFFFFFFFF,
+        .acceptance_code = 0x330 << 21,
+        .acceptance_mask = ~(0x7F0u << 21),
         .single_filter   = true,
     };
 
