@@ -1,6 +1,14 @@
 /**
  * @file main.cpp
  * @brief Emergency (E-stop) node.
+ * 
+ *     *   *
+ *    *** ***
+ *   *********
+ *    *******
+ *     *****
+ *      ***
+ *       *
  *
  * The output layer is lifted verbatim from main_test_hw_commands.cpp --- the
  * same Channel struct, the same plain pinMode/digitalWrite, the same 1 s pulse.

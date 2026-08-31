@@ -22,15 +22,8 @@ void can_init() {
     g.clkout_divider  = 0;
     g.intr_flags      = ESP_INTR_FLAG_LEVEL1;
 
-    // 80 MHz APB / (brp 4 * (1 + tseg_1 14 + tseg_2 5)) = 1 Mbit/s.
-    // Same timing as the other nodes in this repo.
-    const twai_timing_config_t t = {
-        .brp             = 4,
-        .tseg_1          = 14,
-        .tseg_2          = 5,
-        .sjw             = 3,
-        .triple_sampling = false,
-    };
+    // 500 kbit/s (80 MHz APB / (brp 8 * (1 + tseg_1 15 + tseg_2 4)) = 500 kHz).
+    const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();
 
     // Accept everything; the application decides which IDs matter.
     const twai_filter_config_t f = {
@@ -42,7 +35,7 @@ void can_init() {
     ESP_ERROR_CHECK(twai_driver_install(&g, &t, &f));
     ESP_ERROR_CHECK(twai_start());
 
-    ESP_LOGI(TAG, "TWAI up @1Mbit tx=GPIO%d rx=GPIO%d",
+    ESP_LOGI(TAG, "TWAI up @0.5Mbit tx=GPIO%d rx=GPIO%d",
              (int)Pins::CAN_TX, (int)Pins::CAN_RX);
 }
 
