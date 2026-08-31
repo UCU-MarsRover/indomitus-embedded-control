@@ -16,13 +16,7 @@ void can_init() {
     g.clkout_divider = 0;
     g.intr_flags = ESP_INTR_FLAG_LEVEL1;
 
-    const twai_timing_config_t t = {
-        .brp            = 8,      // baudrate prescaler -> 500 kbit/s (APB 80MHz / 8 / 20 tq)
-        .tseg_1         = 14,     // prop_seg + phase_seg1
-        .tseg_2         = 5,      // phase_seg2
-        .sjw            = 3,
-        .triple_sampling = false,
-    };
+    const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();
     const twai_filter_config_t f = {
         .acceptance_code = 0x300 << 21,
         .acceptance_mask = ~(0x7F0 << 21),
