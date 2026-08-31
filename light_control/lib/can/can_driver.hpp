@@ -16,7 +16,7 @@ struct CanMsg {
 };
 
 /**
- * @brief Initialize TWAI (CAN) in normal mode with 1 Mbit/s bitrate.
+ * @brief Initialize TWAI (CAN) in normal mode with 500 kbit/s bitrate.
  *
  * Configuration:
  * - TX pin: PIN_CAN_TX
