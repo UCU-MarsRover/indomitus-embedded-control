@@ -3,9 +3,9 @@
 #include "shared_state.hpp"
 
 namespace CanProtocol {
-    constexpr uint32_t CMD_ID             = 0x200;
-    constexpr uint32_t LEFT_WEIGHT_RESP_ID = 0x202;
-    constexpr uint32_t RIGHT_WEIGHT_RESP_ID = 0x203;
+    constexpr uint32_t CMD_ID             = 0x320;
+    constexpr uint32_t LEFT_WEIGHT_RESP_ID = 0x322;
+    constexpr uint32_t RIGHT_WEIGHT_RESP_ID = 0x323;
 
     constexpr uint8_t CMD_GET_WEIGHT = 0x10;
     constexpr uint8_t CMD_TARE_LEFT  = 0x11;
