@@ -88,8 +88,7 @@
 */
 
 #include <Arduino.h>
-#include <EEPROM.h>
-#include <DFRobot_PH.h>
+#include <Preferences.h>
 #include "driver/twai.h"
 
 // ---------------- Pin definitions ----------------
@@ -114,10 +113,14 @@
 #define SENSOR_TRIGGERED_STATE HIGH
 #define PUMP_SPEED 255
 
-// ---------------- pH config ----------------
-DFRobot_PH ph;
-constexpr size_t PH_EEPROM_SIZE = 32;
-constexpr float PH_TEMPERATURE_C = 25.0f;
+// ---------------- NVS Preferences (Flash) ----------------
+Preferences prefs;
+
+// Calibration points by default: voltage mV <-> pH
+float p1_v  = 1500.0f;
+float p1_ph = 7.00f;
+float p2_v  = 2030.0f;
+float p2_ph = 4.00f;
 
 // ---------------- State ----------------
 enum PumpState { PUMP_IDLE, PUMP_RUNNING };
@@ -130,10 +133,17 @@ void handleCommand(const twai_message_t &msg);
 void sendResponse(uint8_t cmd, uint8_t value);
 void pollCAN();
 void updatePump();
+void loadCalibration();
+float getSensorVoltageMilliVolts();
 float getMeasuredPH();
+void calibrateCustom(float target_ph);
+void shiftCustom(float target_ph);
 uint8_t readPHSensor();
 void pollSerial();
 
+// ================================================================
+// SETUP & LOOP
+// ================================================================
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -144,8 +154,8 @@ void setup() {
 
   digitalWrite(MOTOR_IN1_PIN, LOW);
   digitalWrite(MOTOR_IN2_PIN, LOW);
-  EEPROM.begin(PH_EEPROM_SIZE);
-  ph.begin();
+
+  loadCalibration();
 
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(
       (gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_NORMAL);
@@ -157,12 +167,16 @@ void setup() {
     twai_start();
   }
 
-  Serial.println("\n=== ASTROBIO GRIPPER READY ===");
-  Serial.println("Команди для USB-терміналу:");
-  Serial.println("  'read'       -> Поточні показники (mV та pH)");
-  Serial.println("  'enterph'    -> Увійти в режим калібрування");
-  Serial.println("  'calph'      -> Зберегти калібрувальну точку (4.0/7.0)");
-  Serial.println("  'exitph'     -> Вийти і зафіксувати у Flash");
+  Serial.println("\n==================================================");
+  Serial.println("  ASTROBIO GRIPPER — UNIVERSAL CUSTOM pH SYSTEM");
+  Serial.println("==================================================");
+  Serial.println("Команди для терміналу:");
+  Serial.println("  'read'       -> Показати поточну напругу і pH");
+  Serial.println("  'cal 6.86'   -> Відкалібрувати під кастомний pH");
+  Serial.println("  'shift 7.01' -> Змістити графік під 1 кастомну рідину");
+  Serial.println("  'status'     -> Показати збережені у Flash точки");
+  Serial.println("  'reset'      -> Скинути до заводських (7.0 та 4.0)");
+  Serial.println("==================================================\n");
 }
 
 void loop() {
@@ -171,22 +185,76 @@ void loop() {
   pollSerial();
 }
 
+// ================================================================
+// pH LOGIC (Кастомне калібрування будь-яких величин)
+// ================================================================
+void loadCalibration() {
+  prefs.begin("ph_custom", true);
+  p1_v  = prefs.getFloat("p1_v", 1500.0f);
+  p1_ph = prefs.getFloat("p1_ph", 7.00f);
+  p2_v  = prefs.getFloat("p2_v", 2030.0f);
+  p2_ph = prefs.getFloat("p2_ph", 4.00f);
+  prefs.end();
+}
+
 float getSensorVoltageMilliVolts() {
   long sum = 0;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 20; i++) {
     sum += analogReadMilliVolts(PH_SENSOR_PIN);
     delay(5);
   }
-  return sum / 10.0f;
+  return sum / 20.0f;
 }
 
 float getMeasuredPH() {
-  float current_mv = getSensorVoltageMilliVolts();
-  float ph_value = ph.readPH(current_mv, PH_TEMPERATURE_C);
+  float v = getSensorVoltageMilliVolts();
 
-  if (ph_value < 0.0f) ph_value = 0.0f;
-  if (ph_value > 14.0f) ph_value = 14.0f;
-  return ph_value;
+  if (fabsf(p2_v - p1_v) < 1.0f) return 7.0f;
+
+  float slope = (p2_ph - p1_ph) / (p2_v - p1_v);
+  float ph = p1_ph + (v - p1_v) * slope;
+
+  if (ph < 0.0f) ph = 0.0f;
+  if (ph > 14.0f) ph = 14.0f;
+  return ph;
+}
+
+void calibrateCustom(float target_ph) {
+  float current_v = getSensorVoltageMilliVolts();
+
+  if (fabsf(target_ph - p1_ph) <= fabsf(target_ph - p2_ph)) {
+    p1_v = current_v;
+    p1_ph = target_ph;
+    Serial.printf("[CALIB] Оновлено ТОЧКУ 1: %.1f mV ===> pH %.2f\n", p1_v, p1_ph);
+  } else {
+    p2_v = current_v;
+    p2_ph = target_ph;
+    Serial.printf("[CALIB] Оновлено ТОЧКУ 2: %.1f mV ===> pH %.2f\n", p2_v, p2_ph);
+  }
+
+  prefs.begin("ph_custom", false);
+  prefs.putFloat("p1_v", p1_v);
+  prefs.putFloat("p1_ph", p1_ph);
+  prefs.putFloat("p2_v", p2_v);
+  prefs.putFloat("p2_ph", p2_ph);
+  prefs.end();
+
+  Serial.println("[NVS] Нові кастомні коефіцієнти успішно збережені у Flash!");
+}
+
+void shiftCustom(float target_ph) {
+  float current_ph = getMeasuredPH();
+  float diff = target_ph - current_ph;
+
+  p1_ph += diff;
+  p2_ph += diff;
+
+  prefs.begin("ph_custom", false);
+  prefs.putFloat("p1_ph", p1_ph);
+  prefs.putFloat("p2_ph", p2_ph);
+  prefs.end();
+
+  Serial.printf("[SHIFT] Графік зсунуто на %.2f pH. Поточний pH підігнано під %.2f\n", diff, target_ph);
 }
 
 void pollSerial() {
@@ -194,28 +262,32 @@ void pollSerial() {
     String input = Serial.readStringUntil('\n');
     input.trim();
 
-    if (input.length() == 0) {
-      return;
-    }
-
     if (input == "read") {
-      float voltage = getSensorVoltageMilliVolts();
-      float ph_val = getMeasuredPH();
-      Serial.printf("[LOG] Напруга: %.1f mV | Обчислений pH: %.2f\n", voltage, ph_val);
-    } else {
-      char cmdBuffer[16];
-      input.toCharArray(cmdBuffer, sizeof(cmdBuffer));
-
-      float voltage = getSensorVoltageMilliVolts();
-      Serial.printf("[CALIB] Виконання команди: %s\n", cmdBuffer);
-
-      ph.calibration(voltage, PH_TEMPERATURE_C, cmdBuffer);
-
-      // On ESP32, commit pushes emulated EEPROM changes from RAM to Flash.
-      if (input.equalsIgnoreCase("exitph")) {
-        EEPROM.commit();
-        Serial.println("[FLASH] Збережено у Flash-пам'ять. Калібрування переживе знеструмлення.");
-      }
+      float v = getSensorVoltageMilliVolts();
+      float ph = getMeasuredPH();
+      Serial.printf("[READ] Напруга: %.1f mV | Точний pH: %.2f\n", v, ph);
+    }
+    else if (input.startsWith("cal ")) {
+      float target_ph = input.substring(4).toFloat();
+      calibrateCustom(target_ph);
+    }
+    else if (input.startsWith("shift ")) {
+      float target_ph = input.substring(6).toFloat();
+      shiftCustom(target_ph);
+    }
+    else if (input == "status") {
+      Serial.printf("[STATUS] Точка 1: %.1f mV = pH %.2f\n", p1_v, p1_ph);
+      Serial.printf("[STATUS] Точка 2: %.1f mV = pH %.2f\n", p2_v, p2_ph);
+    }
+    else if (input == "reset") {
+      prefs.begin("ph_custom", false);
+      prefs.putFloat("p1_v", 1500.0f);
+      prefs.putFloat("p1_ph", 7.00f);
+      prefs.putFloat("p2_v", 2030.0f);
+      prefs.putFloat("p2_ph", 4.00f);
+      prefs.end();
+      loadCalibration();
+      Serial.println("[RESET] Скинуто до стандартних 7.00 та 4.00!");
     }
   }
 }
@@ -225,13 +297,13 @@ uint8_t readPHSensor() {
   return (uint8_t)(ph * 10.0f);
 }
 
+// ================================================================
+// CAN & PUMP LOGIC
+// ================================================================
 void pollCAN() {
   twai_message_t rxMsg;
-
   if (twai_receive(&rxMsg, 0) == ESP_OK) {
-    if (!rxMsg.extd &&
-        rxMsg.identifier == CAN_ID_CMD &&
-        rxMsg.data_length_code >= 1) {
+    if (!rxMsg.extd && rxMsg.identifier == CAN_ID_CMD && rxMsg.data_length_code >= 1) {
       handleCommand(rxMsg);
     }
   }
@@ -270,11 +342,9 @@ void handleCommand(const twai_message_t &msg) {
 
 void sendResponse(uint8_t cmd, uint8_t value) {
   twai_message_t message = {};
-
   message.identifier = CAN_ID_RESP;
   message.extd = 0;
   message.data_length_code = 2;
-
   message.data[0] = cmd;
   message.data[1] = value;
 
@@ -299,11 +369,10 @@ void stopPump(bool sensorTriggered) {
 }
 
 void updatePump() {
-  if (pumpState != PUMP_RUNNING) {
-    return;
-  }
+  if (pumpState != PUMP_RUNNING) return;
 
   if (digitalRead(LIQUID_SENSOR_PIN) == SENSOR_TRIGGERED_STATE) {
     stopPump(true);
   }
 }
+
