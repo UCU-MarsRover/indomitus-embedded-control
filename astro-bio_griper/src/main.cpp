@@ -87,8 +87,9 @@
       For READ_PH_SENSOR    : 0xFF = not implemented (placeholder)
 */
 
-#include "driver/twai.h"
 #include <Arduino.h>
+#include <EEPROM.h>
+#include <DFRobot_PH.h>
 #include "driver/twai.h"
 
 // ---------------- Pin definitions ----------------
@@ -113,6 +114,11 @@
 #define SENSOR_TRIGGERED_STATE HIGH
 #define PUMP_SPEED 255
 
+// ---------------- pH config ----------------
+DFRobot_PH ph;
+constexpr size_t PH_EEPROM_SIZE = 32;
+constexpr float PH_TEMPERATURE_C = 25.0f;
+
 // ---------------- State ----------------
 enum PumpState { PUMP_IDLE, PUMP_RUNNING };
 PumpState pumpState = PUMP_IDLE;
@@ -122,52 +128,110 @@ void startPump();
 void stopPump(bool sensorTriggered);
 void handleCommand(const twai_message_t &msg);
 void sendResponse(uint8_t cmd, uint8_t value);
-uint8_t readPHSensor();
 void pollCAN();
 void updatePump();
+float getMeasuredPH();
+uint8_t readPHSensor();
+void pollSerial();
 
 void setup() {
- 
-  delay(500);
+  Serial.begin(115200);
+  delay(1000);
+
   pinMode(MOTOR_IN1_PIN, OUTPUT);
   pinMode(MOTOR_IN2_PIN, OUTPUT);
   pinMode(LIQUID_SENSOR_PIN, INPUT);
 
   digitalWrite(MOTOR_IN1_PIN, LOW);
   digitalWrite(MOTOR_IN2_PIN, LOW);
+  EEPROM.begin(PH_EEPROM_SIZE);
+  ph.begin();
 
-  // ---- CAN / TWAI setup ----
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(
       (gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_NORMAL);
 
-  // Changed from 500 kbps to 1 Mbps
   twai_timing_config_t t_config = TWAI_TIMING_CONFIG_1MBITS();
-
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
   if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
     twai_start();
   }
 
-  delay(3000);
+  Serial.println("\n=== ASTROBIO GRIPPER READY ===");
+  Serial.println("Команди для USB-терміналу:");
+  Serial.println("  'read'       -> Поточні показники (mV та pH)");
+  Serial.println("  'enterph'    -> Увійти в режим калібрування");
+  Serial.println("  'calph'      -> Зберегти калібрувальну точку (4.0/7.0)");
+  Serial.println("  'exitph'     -> Вийти і зафіксувати у Flash");
 }
 
 void loop() {
   pollCAN();
   updatePump();
-  // no blocking delay here on purpose - keeps CAN + pump loop responsive
+  pollSerial();
 }
 
-// ---------------- CAN polling ----------------
+float getSensorVoltageMilliVolts() {
+  long sum = 0;
+  for (int i = 0; i < 10; i++) {
+    sum += analogReadMilliVolts(PH_SENSOR_PIN);
+    delay(5);
+  }
+  return sum / 10.0f;
+}
+
+float getMeasuredPH() {
+  float current_mv = getSensorVoltageMilliVolts();
+  float ph_value = ph.readPH(current_mv, PH_TEMPERATURE_C);
+
+  if (ph_value < 0.0f) ph_value = 0.0f;
+  if (ph_value > 14.0f) ph_value = 14.0f;
+  return ph_value;
+}
+
+void pollSerial() {
+  if (Serial.available() > 0) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+
+    if (input.length() == 0) {
+      return;
+    }
+
+    if (input == "read") {
+      float voltage = getSensorVoltageMilliVolts();
+      float ph_val = getMeasuredPH();
+      Serial.printf("[LOG] Напруга: %.1f mV | Обчислений pH: %.2f\n", voltage, ph_val);
+    } else {
+      char cmdBuffer[16];
+      input.toCharArray(cmdBuffer, sizeof(cmdBuffer));
+
+      float voltage = getSensorVoltageMilliVolts();
+      Serial.printf("[CALIB] Виконання команди: %s\n", cmdBuffer);
+
+      ph.calibration(voltage, PH_TEMPERATURE_C, cmdBuffer);
+
+      // On ESP32, commit pushes emulated EEPROM changes from RAM to Flash.
+      if (input.equalsIgnoreCase("exitph")) {
+        EEPROM.commit();
+        Serial.println("[FLASH] Збережено у Flash-пам'ять. Калібрування переживе знеструмлення.");
+      }
+    }
+  }
+}
+
+uint8_t readPHSensor() {
+  float ph = getMeasuredPH();
+  return (uint8_t)(ph * 10.0f);
+}
+
 void pollCAN() {
   twai_message_t rxMsg;
 
-  // non-blocking receive (0 tick timeout)
   if (twai_receive(&rxMsg, 0) == ESP_OK) {
     if (!rxMsg.extd &&
         rxMsg.identifier == CAN_ID_CMD &&
         rxMsg.data_length_code >= 1) {
-
       handleCommand(rxMsg);
     }
   }
@@ -177,7 +241,6 @@ void handleCommand(const twai_message_t &msg) {
   uint8_t cmd = msg.data[0];
 
   switch (cmd) {
-
     case CMD_START_PUMP:
       if (pumpState == PUMP_IDLE) {
         startPump();
@@ -193,9 +256,7 @@ void handleCommand(const twai_message_t &msg) {
       break;
 
     case CMD_READ_WATER_SENSOR:
-      sendResponse(
-          CMD_READ_WATER_SENSOR,
-          (uint8_t)digitalRead(LIQUID_SENSOR_PIN));
+      sendResponse(CMD_READ_WATER_SENSOR, (uint8_t)digitalRead(LIQUID_SENSOR_PIN));
       break;
 
     case CMD_READ_PH_SENSOR:
@@ -220,42 +281,29 @@ void sendResponse(uint8_t cmd, uint8_t value) {
   twai_transmit(&message, pdMS_TO_TICKS(10));
 }
 
-// ---------------- Pump control ----------------
 void startPump() {
   digitalWrite(MOTOR_IN2_PIN, LOW);
   analogWrite(MOTOR_IN1_PIN, PUMP_SPEED);
-
   pumpState = PUMP_RUNNING;
 }
 
 void stopPump(bool sensorTriggered) {
   analogWrite(MOTOR_IN1_PIN, 0);
-
   digitalWrite(MOTOR_IN1_PIN, LOW);
   digitalWrite(MOTOR_IN2_PIN, LOW);
-
   pumpState = PUMP_IDLE;
 
   if (sensorTriggered) {
-
-    sendResponse(
-        CMD_READ_WATER_SENSOR,
-        (uint8_t)digitalRead(LIQUID_SENSOR_PIN));
-
+    sendResponse(CMD_READ_WATER_SENSOR, (uint8_t)digitalRead(LIQUID_SENSOR_PIN));
   }
 }
 
-// ---------------- Pump update ----------------
 void updatePump() {
-  if (pumpState != PUMP_RUNNING)
+  if (pumpState != PUMP_RUNNING) {
     return;
+  }
 
   if (digitalRead(LIQUID_SENSOR_PIN) == SENSOR_TRIGGERED_STATE) {
     stopPump(true);
   }
-}
-
-// ---------------- PH sensor ----------------
-uint8_t readPHSensor() {
-  return 0xFF;
 }
