@@ -50,3 +50,4 @@ qtcreator-*
 CATKIN_IGNORE
 
 .vscode/
+.venv/
