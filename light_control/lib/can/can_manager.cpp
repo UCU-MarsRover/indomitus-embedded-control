@@ -30,13 +30,29 @@ static void handle_command(const CanMsg& msg) {
     }
 
     if (msg.data[0] == Can::CMD_TELEMETRY_ENABLE) {
-        power_telemetry_enabled = true;
+        power_telemetry_set_all_enabled(true);
         send_response(Can::CMD_TELEMETRY_ENABLE, Can::STATUS_OK);
         return;
     } else if (msg.data[0] == Can::CMD_TELEMETRY_DISABLE) {
-        power_telemetry_enabled = false;
+        power_telemetry_set_all_enabled(false);
         send_response(Can::CMD_TELEMETRY_DISABLE, Can::STATUS_OK);
         return;
+    }
+
+    switch (msg.data[0]) {
+        case Can::CMD_TELEMETRY_1_ENABLE:
+        case Can::CMD_TELEMETRY_1_DISABLE:
+        case Can::CMD_TELEMETRY_2_ENABLE:
+        case Can::CMD_TELEMETRY_2_DISABLE: {
+            // 0x12/0x13 -> sensor 0, 0x14/0x15 -> sensor 1; odd command means OFF
+            const size_t index   = (msg.data[0] - Can::CMD_TELEMETRY_1_ENABLE) / 2;
+            const bool   enabled = (msg.data[0] % 2) == 0;
+            const bool   ok      = power_telemetry_set_enabled(index, enabled);
+            send_response(msg.data[0], ok ? Can::STATUS_OK : Can::STATUS_ERROR);
+            return;
+        }
+        default:
+            break;
     }
 
     LightCommand lc{};

@@ -22,6 +22,7 @@ static void print_uart_help() {
     Serial.println("  green on|off");
     Serial.println("  blue on|off");
     Serial.println("  traffic <0-15>");
+    Serial.println("  power 1|2|all on|off");
     Serial.println("  all off");
 }
 
@@ -131,6 +132,35 @@ static void handle_uart_command(String line) {
     }
 
     if (handle_single_light_command(line)) {
+        return;
+    }
+
+    if (line.startsWith("power ")) {
+        const String rest = line.substring(6);
+        const int space = rest.indexOf(' ');
+        if (space < 0) {
+            Serial.println("ERR usage: power 1|2|all on|off");
+            return;
+        }
+
+        const String target = rest.substring(0, space);
+        bool enabled = false;
+        if (!parse_on_off(rest.substring(space + 1), enabled)) {
+            Serial.println("ERR usage: power 1|2|all on|off");
+            return;
+        }
+
+        if (target == "all") {
+            power_telemetry_set_all_enabled(enabled);
+        } else if (target != "1" && target != "2") {
+            Serial.println("ERR usage: power 1|2|all on|off");
+            return;
+        } else if (!power_telemetry_set_enabled(target.toInt() - 1, enabled)) {
+            Serial.println("ERR unknown power sensor");
+            return;
+        }
+
+        Serial.printf("OK power %s %s\n", target.c_str(), enabled ? "on" : "off");
         return;
     }
 

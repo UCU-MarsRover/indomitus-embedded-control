@@ -8,7 +8,8 @@ extern uint32_t last_command;
 namespace CanProtocol {
     constexpr uint32_t CMD_ID      = 0x300;
     constexpr uint32_t RESP_ID     = 0x301;
-    constexpr uint32_t TELEMETRY_ID = 0x302;
+    constexpr uint32_t TELEMETRY_ID   = 0x302; // power sensor 1 (I2C 0x45)
+    constexpr uint32_t TELEMETRY_ID_2 = 0x303; // power sensor 2 (I2C 0x44)
 
     constexpr uint8_t CMD_SPOTLIGHT_ON  = 0x01;
     constexpr uint8_t CMD_SPOTLIGHT_OFF = 0x02;
@@ -38,8 +39,13 @@ namespace CanProtocol {
     constexpr uint8_t CMD_TOWER_ON            = 0x2C;
     constexpr uint8_t CMD_TOWER_OFF           = 0x2D;
 
+    // Power telemetry: 0x10/0x11 act on every sensor, the rest on a single one
     constexpr uint8_t CMD_TELEMETRY_ENABLE = 0x10;
     constexpr uint8_t CMD_TELEMETRY_DISABLE = 0x11;
+    constexpr uint8_t CMD_TELEMETRY_1_ENABLE  = 0x12;
+    constexpr uint8_t CMD_TELEMETRY_1_DISABLE = 0x13;
+    constexpr uint8_t CMD_TELEMETRY_2_ENABLE  = 0x14;
+    constexpr uint8_t CMD_TELEMETRY_2_DISABLE = 0x15;
 
     constexpr uint8_t STATUS_OK    = 0x00;
     constexpr uint8_t STATUS_ERROR = 0x01;
