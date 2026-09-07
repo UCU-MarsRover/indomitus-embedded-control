@@ -4,10 +4,13 @@
 #include "can_manager.hpp"
 #include "power_sensor.hpp"
 #include "pins.hpp"
+#include <atomic>
 
 static const char* TAG = "INA228";
 
 namespace Can = CanProtocol;
+
+std::atomic<bool> power_telemetry_enabled{false};
 
 // INA228 I2C address and conversion constants
 static constexpr uint8_t INA228_ADDR = 0x45;
@@ -42,7 +45,9 @@ void power_sensor_init() {
     Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
     // Write shunt calibration so current register returns meaningful values
     writeRegister16(0x02, SHUNT_CAL_VALUE);
+#ifdef DEBUG_ENABLED
     ESP_LOGD(TAG, "INA228 initialized at 0x%02X", INA228_ADDR);
+#endif
 }
 
 void power_telemetry_task(void*) {
@@ -50,6 +55,11 @@ void power_telemetry_task(void*) {
     TickType_t       last_wake = xTaskGetTickCount();
 
     for (;;) {
+        if (!power_telemetry_enabled) {
+            vTaskDelay(period);
+            continue;
+        }
+
         float voltage = 0.0f;
         float current = 0.0f;
 
@@ -58,7 +68,9 @@ void power_telemetry_task(void*) {
             uint32_t vbus = rawV >> 4;
             voltage = vbus * BUS_VOLTAGE_LSB;
         } else {
+#ifdef DEBUG_ENABLED\
             ESP_LOGW(TAG, "Failed to read bus voltage");
+#endif
         }
 
         uint32_t rawI = readRegister24(0x07);
@@ -67,7 +79,9 @@ void power_telemetry_task(void*) {
             if (raw20 & 0x80000) raw20 -= 0x100000; // sign extend
             current = raw20 * CURRENT_LSB;
         } else {
+#ifdef DEBUG_ENABLED
             ESP_LOGW(TAG, "Failed to read current");
+#endif
         }
 
         uint8_t payload[8];
