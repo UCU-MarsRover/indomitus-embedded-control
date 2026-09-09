@@ -1,15 +1,23 @@
-# Indomitus Rover — ESP Firmware
+<h1 align="center">Indomitus — Mars Rover's Microcontrollers</h1>
 
-[![PlatformIO](https://img.shields.io/badge/build-PlatformIO-FF7F00?logo=platformio&logoColor=white)](https://platformio.org/)
-![Platform](https://img.shields.io/badge/platform-ESP32%20%7C%20ESP32S3%20%7C%20ESP32C3-informational)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+<p align="center">
+  Firmware for all microcontrollers on the Indomitus rover. Each subsystem's firmware lives in its own folder, built and flashed independently.
+</p>
 
-[![main](https://img.shields.io/github/actions/workflow/status/UCU-MarsRover/indomitus-embedded-control/release.yaml?branch=main&label=main&logo=github)](https://github.com/UCU-MarsRover/indomitus-embedded-control/actions/workflows/release.yaml?query=branch%3Amain)
-[![develop](https://img.shields.io/github/actions/workflow/status/UCU-MarsRover/indomitus-embedded-control/release.yaml?branch=develop&label=develop&logo=github)](https://github.com/UCU-MarsRover/indomitus-embedded-control/actions/workflows/release.yaml?query=branch%3Adevelop)
-[![main release](https://img.shields.io/github/v/release/UCU-MarsRover/indomitus-embedded-control?label=main&color=green)](https://github.com/UCU-MarsRover/indomitus-embedded-control/releases/latest)
-[![develop release](https://img.shields.io/github/v/release/UCU-MarsRover/indomitus-embedded-control?include_prereleases&label=develop)](https://github.com/UCU-MarsRover/indomitus-embedded-control/releases)
+<p align="center">
+  <a href="https://platformio.org/"><img alt="PlatformIO" src="https://img.shields.io/badge/build-PlatformIO-FF7F00?logo=platformio&logoColor=white"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-ESP32%20%7C%20ESP32S3%20%7C%20ESP32C3-informational">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
 
-Firmware for all microcontrollers on the Indomitus rover. Each subsystem's firmware lives in its own folder, built and flashed independently.
+<p align="center">
+  <a href="https://github.com/UCU-MarsRover/indomitus-embedded-control/actions/workflows/release.yaml?query=branch%3Amain"><img alt="main" src="https://img.shields.io/github/actions/workflow/status/UCU-MarsRover/indomitus-embedded-control/release.yaml?branch=main&label=main&logo=github"></a>
+  <a href="https://github.com/UCU-MarsRover/indomitus-embedded-control/actions/workflows/release.yaml?query=branch%3Adevelop"><img alt="develop" src="https://img.shields.io/github/actions/workflow/status/UCU-MarsRover/indomitus-embedded-control/release.yaml?branch=develop&label=develop&logo=github"></a>
+  <a href="https://github.com/UCU-MarsRover/indomitus-embedded-control/releases/latest"><img alt="main release" src="https://img.shields.io/github/v/release/UCU-MarsRover/indomitus-embedded-control?label=main&color=green"></a>
+  <a href="https://github.com/UCU-MarsRover/indomitus-embedded-control/releases"><img alt="develop release" src="https://img.shields.io/github/v/release/UCU-MarsRover/indomitus-embedded-control?include_prereleases&label=develop"></a>
+</p>
+
+---
 
 ## Structure
 
