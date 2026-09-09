@@ -6,17 +6,14 @@ Firmware for all ESP32/ESP32S3 microcontrollers on the Indomitus rover. Each sub
 
 ```
 .
-├── <subsystem_1>/       # e.g. arm, drill, science-payload, power-board...
-├── <subsystem_2>/
-├── ...
+├── firmware/             # one folder per subsystem microcontroller
+│   ├── <subsystem_1>/    # e.g. claw_drill, container_control, light_control...
+│   ├── <subsystem_2>/
+│   └── ...
+├── shared/
+│   └── libs/             # libraries shared across firmware projects
+├── docs/                 # cross-project documentation
 └── README.md
 ```
 
-Each folder is a self-contained firmware project (its own build config, dependencies, and README where needed) for one ESP on the rover. There is no shared build system across folders — treat each as independent.
-
-## Adding a new subsystem
-
-1. Create a new folder named after the subsystem.
-2. Keep it self-contained (own `platformio.ini` or equivalent, own libraries).
-3. Add a row to the subsystem table above.
-4. If the board communicates with the main rover computer (ROS2 side), document the interface (serial protocol, topic names, message format) in that folder's own README.
+Each folder under `firmware/` is a self-contained PlatformIO project (its own `platformio.ini`, `src/`, `include/`, `lib/`, and README where needed) for one microcontroller (ESP32/ESP32S3, STM32, ...) on the rover. There is no shared build system across firmware folders — treat each as independent, aside from anything pulled in from `shared/libs`.
